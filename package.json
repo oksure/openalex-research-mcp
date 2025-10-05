@@ -1,11 +1,11 @@
 {
-  "name": "openalex-mcp",
+  "name": "openalex-research-mcp",
   "version": "1.0.0",
   "description": "MCP server for OpenAlex API - enabling literature review and research landscaping",
   "type": "module",
   "main": "build/index.js",
   "bin": {
-    "openalex-mcp": "build/index.js"
+    "openalex-research-mcp": "build/index.js"
   },
   "files": [
     "build",
@@ -38,12 +38,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/oksure/openalex-mcp.git"
+    "url": "git+https://github.com/oksure/openalex-research-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/oksure/openalex-mcp/issues"
+    "url": "https://github.com/oksure/openalex-research-mcp/issues"
   },
-  "homepage": "https://github.com/oksure/openalex-mcp#readme",
+  "homepage": "https://github.com/oksure/openalex-research-mcp#readme",
   "engines": {
     "node": ">=18.0.0"
   },

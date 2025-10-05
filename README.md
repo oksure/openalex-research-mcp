@@ -41,18 +41,18 @@ Access 240+ million scholarly works through 18 specialized tools:
 
 ```bash
 # Install globally
-npm install -g openalex-mcp
+npm install -g openalex-research-mcp
 
 # Or use directly with npx (no installation needed)
-npx openalex-mcp
+npx openalex-research-mcp
 ```
 
 ### Option 2: Install from source
 
 ```bash
 # Clone the repository
-git clone https://github.com/oksure/openalex-mcp.git
-cd openalex-mcp
+git clone https://github.com/oksure/openalex-research-mcp.git
+cd openalex-research-mcp
 
 # Install dependencies
 npm install
@@ -90,7 +90,7 @@ Add to your Claude Desktop config file:
   "mcpServers": {
     "openalex": {
       "command": "npx",
-      "args": ["-y", "openalex-mcp"],
+      "args": ["-y", "openalex-research-mcp"],
       "env": {
         "OPENALEX_EMAIL": "your.email@example.com"
       }
@@ -105,7 +105,7 @@ Add to your Claude Desktop config file:
   "mcpServers": {
     "openalex": {
       "command": "node",
-      "args": ["/absolute/path/to/openalex-mcp/build/index.js"],
+      "args": ["/absolute/path/to/openalex-research-mcp/build/index.js"],
       "env": {
         "OPENALEX_EMAIL": "your.email@example.com"
       }

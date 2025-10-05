@@ -1,6 +1,6 @@
 # NPM Publishing Guide
 
-This guide explains how to publish and maintain the `openalex-mcp` package on npm with automated releases.
+This guide explains how to publish and maintain the `openalex-research-mcp` package on npm with automated releases.
 
 ## Initial Setup (One-Time)
 
@@ -16,7 +16,7 @@ This guide explains how to publish and maintain the `openalex-mcp` package on np
 5. Copy the generated token (starts with `npm_...`)
 
 ### 3. Add npm Token to GitHub Secrets
-1. Go to your GitHub repository: https://github.com/oksure/openalex-mcp
+1. Go to your GitHub repository: https://github.com/oksure/openalex-research-mcp
 2. Navigate to Settings → Secrets and variables → Actions
 3. Click "New repository secret"
 4. Name: `NPM_TOKEN`
@@ -76,9 +76,9 @@ The package is automatically published to npm when you create a release or push 
 
 After publishing:
 
-1. **Check npm**: Visit https://www.npmjs.com/package/openalex-mcp
-2. **Check GitHub Actions**: Go to https://github.com/oksure/openalex-mcp/actions
-3. **Test installation**: `npx openalex-mcp@latest`
+1. **Check npm**: Visit https://www.npmjs.com/package/openalex-research-mcp
+2. **Check GitHub Actions**: Go to https://github.com/oksure/openalex-research-mcp/actions
+3. **Test installation**: `npx openalex-research-mcp@latest`
 
 ## Version Numbers
 
@@ -119,10 +119,10 @@ Once published, users can install via:
 
 ```bash
 # Global installation
-npm install -g openalex-mcp
+npm install -g openalex-research-mcp
 
 # Or use directly
-npx openalex-mcp
+npx openalex-research-mcp
 ```
 
 For Claude Desktop configuration:
@@ -131,7 +131,7 @@ For Claude Desktop configuration:
   "mcpServers": {
     "openalex": {
       "command": "npx",
-      "args": ["-y", "openalex-mcp"],
+      "args": ["-y", "openalex-research-mcp"],
       "env": {
         "OPENALEX_EMAIL": "your.email@example.com"
       }
@@ -158,8 +158,8 @@ For Claude Desktop configuration:
 
 ## Package Scope
 
-If you want to publish under an npm organization (e.g., `@oksure/openalex-mcp`):
+If you want to publish under an npm organization (e.g., `@oksure/openalex-research-mcp`):
 
-1. Update package.json name: `"name": "@oksure/openalex-mcp"`
+1. Update package.json name: `"name": "@oksure/openalex-research-mcp"`
 2. The workflow already includes `--access public` for scoped packages
-3. Users would install with: `npm install -g @oksure/openalex-mcp`
+3. Users would install with: `npm install -g @oksure/openalex-research-mcp`

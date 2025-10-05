@@ -3,7 +3,7 @@
     "openalex": {
       "command": "node",
       "args": [
-        "/absolute/path/to/openalex-mcp/build/index.js"
+        "/absolute/path/to/openalex-research-mcp/build/index.js"
       ],
       "env": {
         "OPENALEX_EMAIL": "your.email@example.com"

@@ -27,7 +27,7 @@ npm run build
   "mcpServers": {
     "openalex": {
       "command": "node",
-      "args": ["/Users/yourusername/path/to/openalex-mcp/build/index.js"],
+      "args": ["/Users/yourusername/path/to/openalex-research-mcp/build/index.js"],
       "env": {
         "OPENALEX_EMAIL": "your.email@example.com"
       }
