@@ -114,6 +114,12 @@ Add to your Claude Desktop config file:
 }
 ```
 
+### TypingMind and Other MCP Clients
+
+The same configuration format works for TypingMind and other MCP-compatible clients.
+
+> **⚠️ TypingMind Users**: If you encounter "tool_use_id" errors, see [TYPINGMIND.md](TYPINGMIND.md) for troubleshooting steps and best practices. **TL;DR**: Start a new chat, request fewer results (5-10), and use specific queries with filters.
+
 ## Usage Examples
 
 ### Example 1: Literature Review for AI Safety
@@ -122,7 +128,7 @@ Add to your Claude Desktop config file:
 Find the most influential papers on AI safety published since 2020
 ```
 
-The assistant will use `get_top_cited_works` with appropriate filters to find highly-cited papers in AI safety research.
+The assistant will use `get_top_cited_works` with appropriate filters to find highly-cited papers in AI safety research. The tool automatically filters for papers with at least 50 citations by default, ensuring results focus on influential work. For the most impactful papers, you can specify a higher threshold like `min_citations: 200`.
 
 ### Example 2: Citation Network Analysis
 
@@ -163,6 +169,60 @@ Which countries are leading research in climate change mitigation?
 ```
 
 The assistant will use `analyze_geographic_distribution` to map research activity by country.
+
+## Response Format
+
+The MCP server uses a **two-tier response system** to balance performance and completeness:
+
+### Summarized Responses (Search Results)
+
+For list operations (`search_works`, `get_citations`, `get_author_works`, etc.), responses include only essential information:
+
+**Included:**
+- Core identifiers (ID, DOI, title)
+- Publication metadata (year, date, type)
+- Citation metrics (cited_by_count)
+- First 5 authors (with `authors_truncated` flag if more exist)
+- Primary topic classification
+- Open access status and URLs
+- Source/journal name
+- Abstract preview (first 500 chars)
+
+**Excluded to reduce size:**
+- Full author lists beyond 5 authors
+- All secondary topics/concepts
+- Complete affiliation details
+- Full reference lists
+- Detailed bibliographic data
+
+This optimization reduces response sizes by ~80-90% (from ~10 KB to ~1.7 KB per work), making the server compatible with all MCP clients including TypingMind and Claude Desktop.
+
+### Full Details (`get_work` tool)
+
+When you need **complete information** about a specific paper, use the `get_work` tool with a work ID or DOI. This returns:
+
+**Complete Author Information:**
+- ALL authors (not just first 5)
+- Position indicators (first, middle, last author)
+- Institutions and affiliations
+- ORCID IDs
+- Corresponding author flags
+- Country information
+
+**Complete Content:**
+- Full abstract (reconstructed from OpenAlex index)
+- All topics (not just primary)
+- Complete bibliographic data
+- Funding and grant information
+- Keywords
+- Complete reference and citation lists
+
+**Use Cases:**
+- Identifying PIs (often last author in biomedical fields)
+- Finding corresponding authors
+- Getting complete author affiliations
+- Accessing full abstracts
+- Comprehensive paper analysis
 
 ## Tool Reference
 

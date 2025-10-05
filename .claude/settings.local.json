@@ -9,7 +9,12 @@
       "Bash(npm run build:*)",
       "Bash(node:*)",
       "Bash(curl \"https://api.openalex.org/works?per_page=1\")",
-      "Bash(curl -s \"https://api.openalex.org/works?search=AI&per_page=1\")"
+      "Bash(curl -s \"https://api.openalex.org/works?search=AI&per_page=1\")",
+      "Bash(npm test)",
+      "WebSearch",
+      "WebFetch(domain:docs.typingmind.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []

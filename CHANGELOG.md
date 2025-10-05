@@ -2,6 +2,31 @@
 
 All notable changes to the OpenAlex MCP Server will be documented in this file.
 
+## [0.1.1] - 2025-10-06
+
+### Added
+- **Full work details in `get_work` tool**: Now returns complete information including ALL authors (not just first 5), full abstract reconstruction, all topics, complete bibliographic data, funding/grants, keywords, and reference lists. Addresses the issue where important author positions (e.g., last author/PI, corresponding author) were missing from summarized results.
+  - Authors include position indicators (first, middle, last), institutions, ORCID IDs, corresponding author flags
+  - Full abstract reconstructed from OpenAlex inverted index
+  - All topics (not just primary)
+  - Funding and grant information
+  - Complete keyword list
+  - Use `get_work` when you need detailed information about a specific paper
+
+### Changed
+- **Response optimization strategy**: Implemented two-tier response system
+  - List operations (`search_works`, `get_citations`, etc.) return summarized results (~1.7 KB per work)
+  - Single work retrieval (`get_work`) returns complete details for comprehensive analysis
+- **Improved `get_top_cited_works` tool**: Now automatically filters for papers with at least 50 citations by default. Added `min_citations` parameter (default: 50) for customization.
+- **Reduced default page size from 25 to 10**: Prevents context overflow in MCP clients. Configurable via `MCP_DEFAULT_PAGE_SIZE` environment variable.
+- **Updated MCP SDK from 1.0.4 to 1.19.1**: Major version update with bug fixes and improved compatibility with MCP clients.
+
+### Fixed
+- **Fixed missing author information**: `get_work` now returns all authors including last author (often PI) and corresponding authors
+- **Fixed "Context length limit reached" errors** in MCP clients through response size optimization
+- **Improved TypingMind compatibility** through MCP SDK update and response optimizations
+- Fixed issue where `get_top_cited_works` could return papers with zero citations
+
 ## [1.0.0] - 2025-10-05
 
 ### Added

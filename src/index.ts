@@ -17,13 +17,176 @@ console.error('API Key:', process.env.OPENALEX_API_KEY ? 'Set' : 'Not set');
 // Initialize OpenAlex client
 const openAlexClient = new OpenAlexClient();
 
+// Default page size for MCP clients (can be overridden with MCP_DEFAULT_PAGE_SIZE env var)
+const DEFAULT_PAGE_SIZE = parseInt(process.env.MCP_DEFAULT_PAGE_SIZE || '10', 10);
+
+// Helper function to filter work data to essential fields only (reduces context usage)
+function summarizeWork(work: any) {
+  return {
+    id: work.id,
+    doi: work.doi,
+    title: work.title || work.display_name,
+    publication_year: work.publication_year,
+    publication_date: work.publication_date,
+    cited_by_count: work.cited_by_count,
+    type: work.type,
+    // Only first 5 authors to avoid huge lists
+    authors: work.authorships?.slice(0, 5).map((a: any) => ({
+      name: a.author?.display_name,
+      institutions: a.institutions?.slice(0, 2).map((i: any) => i.display_name)
+    })) || [],
+    authors_truncated: work.authorships?.length > 5,
+    // Primary topic only
+    primary_topic: work.primary_topic ? {
+      display_name: work.primary_topic.display_name,
+      field: work.primary_topic.field?.display_name,
+      subfield: work.primary_topic.subfield?.display_name
+    } : null,
+    // Open access info
+    open_access: {
+      is_oa: work.open_access?.is_oa,
+      oa_status: work.open_access?.oa_status,
+      oa_url: work.open_access?.oa_url
+    },
+    // Key URLs
+    landing_page_url: work.primary_location?.landing_page_url,
+    pdf_url: work.best_oa_location?.pdf_url,
+    // Source (journal/venue)
+    source: work.primary_location?.source?.display_name,
+    // Abstract if available (truncated to 500 chars)
+    abstract: work.abstract_inverted_index ?
+      Object.keys(work.abstract_inverted_index).slice(0, 100).join(' ').substring(0, 500) + '...' : null
+  };
+}
+
+// Helper function to filter response data
+function summarizeWorksList(response: any) {
+  return {
+    meta: {
+      count: response.meta?.count,
+      page: response.meta?.page,
+      per_page: response.meta?.per_page
+    },
+    results: response.results?.map(summarizeWork) || []
+  };
+}
+
+// Helper function to return full work details (for get_work tool)
+function getFullWorkDetails(work: any) {
+  return {
+    id: work.id,
+    doi: work.doi,
+    title: work.title || work.display_name,
+    publication_year: work.publication_year,
+    publication_date: work.publication_date,
+    cited_by_count: work.cited_by_count,
+    type: work.type,
+    // ALL authors with full details
+    authors: work.authorships?.map((a: any, index: number) => ({
+      position: index === 0 ? 'first' : index === work.authorships.length - 1 ? 'last' : 'middle',
+      author_position: a.author_position,
+      name: a.author?.display_name,
+      id: a.author?.id,
+      orcid: a.author?.orcid,
+      institutions: a.institutions?.map((i: any) => ({
+        id: i.id,
+        display_name: i.display_name,
+        ror: i.ror,
+        country_code: i.country_code,
+        type: i.type
+      })) || [],
+      countries: a.countries || [],
+      is_corresponding: a.is_corresponding,
+      raw_affiliation_strings: a.raw_affiliation_strings || []
+    })) || [],
+    // Full topics (not just primary)
+    primary_topic: work.primary_topic ? {
+      id: work.primary_topic.id,
+      display_name: work.primary_topic.display_name,
+      score: work.primary_topic.score,
+      field: work.primary_topic.field?.display_name,
+      subfield: work.primary_topic.subfield?.display_name,
+      domain: work.primary_topic.domain?.display_name
+    } : null,
+    topics: work.topics?.slice(0, 5).map((t: any) => ({
+      id: t.id,
+      display_name: t.display_name,
+      score: t.score
+    })) || [],
+    // Open access info
+    open_access: {
+      is_oa: work.open_access?.is_oa,
+      oa_status: work.open_access?.oa_status,
+      oa_url: work.open_access?.oa_url,
+      any_repository_has_fulltext: work.open_access?.any_repository_has_fulltext
+    },
+    // URLs and locations
+    landing_page_url: work.primary_location?.landing_page_url,
+    pdf_url: work.best_oa_location?.pdf_url,
+    primary_location: work.primary_location ? {
+      is_oa: work.primary_location.is_oa,
+      landing_page_url: work.primary_location.landing_page_url,
+      pdf_url: work.primary_location.pdf_url,
+      source: work.primary_location.source ? {
+        id: work.primary_location.source.id,
+        display_name: work.primary_location.source.display_name,
+        issn_l: work.primary_location.source.issn_l,
+        issn: work.primary_location.source.issn,
+        type: work.primary_location.source.type,
+        host_organization: work.primary_location.source.host_organization_name
+      } : null,
+      license: work.primary_location.license,
+      version: work.primary_location.version
+    } : null,
+    // Abstract (reconstructed from inverted index)
+    abstract: work.abstract_inverted_index ?
+      reconstructAbstract(work.abstract_inverted_index) : null,
+    // Bibliographic info
+    biblio: work.biblio,
+    // Key metrics and identifiers
+    referenced_works_count: work.referenced_works_count,
+    cited_by_percentile_year: work.cited_by_percentile_year,
+    fwci: work.fwci,
+    // Keywords
+    keywords: work.keywords?.slice(0, 10).map((k: any) => ({
+      keyword: k.keyword || k.display_name,
+      score: k.score
+    })) || [],
+    // Grants/funding
+    grants: work.grants?.slice(0, 5).map((g: any) => ({
+      funder: g.funder,
+      funder_display_name: g.funder_display_name,
+      award_id: g.award_id
+    })) || [],
+    // Reference and citation counts
+    referenced_works: work.referenced_works || [],
+    related_works: work.related_works || []
+  };
+}
+
+// Helper function to reconstruct abstract from inverted index
+function reconstructAbstract(invertedIndex: any): string {
+  const words: { [key: number]: string } = {};
+
+  for (const [word, positions] of Object.entries(invertedIndex)) {
+    if (Array.isArray(positions)) {
+      positions.forEach((pos: number) => {
+        words[pos] = word;
+      });
+    }
+  }
+
+  const sortedPositions = Object.keys(words).map(Number).sort((a, b) => a - b);
+  return sortedPositions.map(pos => words[pos]).join(' ');
+}
+
 // Define all tools
 const tools: Tool[] = [
   // Literature Search & Discovery
   {
     name: 'search_works',
     description:
-      'Search for scholarly works (papers, articles, books) with advanced filtering. Supports Boolean operators (AND, OR, NOT), publication year ranges, citation counts, and more. Essential for finding relevant literature.',
+      'Search for scholarly works (papers, articles, books) with advanced filtering. Supports Boolean operators (AND, OR, NOT), publication year ranges, citation counts, and more. Essential for finding relevant literature. Tip: For highly influential papers, use the cited_by_count filter (e.g., ">100") or consider using get_top_cited_works tool.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -64,7 +227,7 @@ const tools: Tool[] = [
         },
         per_page: {
           type: 'number',
-          description: 'Results per page, max 200 (default: 25)',
+          description: 'Results per page, max 200 (default: 10)',
         },
       },
     },
@@ -72,7 +235,7 @@ const tools: Tool[] = [
   {
     name: 'get_work',
     description:
-      'Get detailed information about a specific work by OpenAlex ID or DOI. Returns full metadata including title, authors, abstract, citations, references, and more.',
+      'Get COMPLETE details about a specific work by OpenAlex ID or DOI. Unlike search results which are summarized, this returns ALL information including: complete author list (first, middle, and last authors with positions, institutions, ORCID, corresponding author flags), full abstract (reconstructed), all topics, complete bibliographic data, funding/grants, keywords, and reference lists. Use this when you need detailed information about a specific paper, especially for identifying PIs (often last author) or corresponding authors.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -98,7 +261,7 @@ const tools: Tool[] = [
         },
         per_page: {
           type: 'number',
-          description: 'Number of related works to return (default: 25, max: 200)',
+          description: 'Number of related works to return (default: 10, max: 200)',
         },
       },
       required: ['id'],
@@ -130,7 +293,7 @@ const tools: Tool[] = [
         },
         per_page: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 200)',
+          description: 'Results per page (default: 10, max: 200)',
         },
       },
       required: ['topic'],
@@ -176,7 +339,7 @@ const tools: Tool[] = [
         },
         per_page: {
           type: 'number',
-          description: 'Citations per page (default: 25, max: 200)',
+          description: 'Citations per page (default: 10, max: 200)',
         },
         sort: {
           type: 'string',
@@ -232,7 +395,7 @@ const tools: Tool[] = [
   {
     name: 'get_top_cited_works',
     description:
-      'Find the most highly cited works in a research area or matching specific criteria. Identifies influential and seminal papers.',
+      'Find the most highly cited works in a research area or matching specific criteria. Identifies influential and seminal papers. Automatically filters for papers with significant citations.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -252,9 +415,13 @@ const tools: Tool[] = [
           type: 'number',
           description: 'Consider works up to this year',
         },
+        min_citations: {
+          type: 'number',
+          description: 'Minimum citation count threshold (default: 50). Use higher values (e.g., 200) for only the most influential papers.',
+        },
         per_page: {
           type: 'number',
-          description: 'Number of top works to return (default: 25, max: 200)',
+          description: 'Number of top works to return (default: 10, max: 200)',
         },
       },
     },
@@ -286,7 +453,7 @@ const tools: Tool[] = [
         },
         per_page: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 200)',
+          description: 'Results per page (default: 10, max: 200)',
         },
       },
     },
@@ -316,7 +483,7 @@ const tools: Tool[] = [
         },
         per_page: {
           type: 'number',
-          description: 'Works per page (default: 25, max: 200)',
+          description: 'Works per page (default: 10, max: 200)',
         },
       },
       required: ['author_id'],
@@ -366,7 +533,7 @@ const tools: Tool[] = [
         },
         per_page: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 200)',
+          description: 'Results per page (default: 10, max: 200)',
         },
       },
     },
@@ -437,7 +604,7 @@ const tools: Tool[] = [
         },
         per_page: {
           type: 'number',
-          description: 'Number of trending topics to return (default: 25)',
+          description: 'Number of trending topics to return (default: 10)',
         },
       },
     },
@@ -512,7 +679,7 @@ const tools: Tool[] = [
         },
         per_page: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 200)',
+          description: 'Results per page (default: 10, max: 200)',
         },
       },
     },
@@ -587,6 +754,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   console.error('Tool call received:', name);
   console.error('Arguments:', JSON.stringify(args));
+  console.error('Request ID:', (request as any).id || 'no-id');
 
   try {
     // Type assertion for args
@@ -600,14 +768,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           filter,
           sort: params.sort,
           page: params.page || 1,
-          perPage: params.per_page || 25,
+          perPage: params.per_page || DEFAULT_PAGE_SIZE,
         };
         const results = await openAlexClient.getWorks(options);
+        const summary = summarizeWorksList(results);
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(results, null, 2),
+              text: JSON.stringify(summary, null, 2),
             },
           ],
         };
@@ -615,11 +784,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_work': {
         const work = await openAlexClient.getWork(params.id);
+        const fullDetails = getFullWorkDetails(work);
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(work, null, 2),
+              text: JSON.stringify(fullDetails, null, 2),
             },
           ],
         };
@@ -631,11 +801,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // Fetch related works
         const relatedWorks = [];
-        const limit = Math.min(params.per_page || 25, relatedIds.length);
+        const limit = Math.min(params.per_page || DEFAULT_PAGE_SIZE, relatedIds.length);
         for (let i = 0; i < limit; i++) {
           try {
             const relatedWork = await openAlexClient.getWork(relatedIds[i]);
-            relatedWorks.push(relatedWork);
+            relatedWorks.push(summarizeWork(relatedWork));
           } catch (error) {
             // Skip if work not found
             continue;
@@ -658,14 +828,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           search: params.topic,
           filter,
           sort: params.sort || 'relevance_score',
-          perPage: params.per_page || 25,
+          perPage: params.per_page || DEFAULT_PAGE_SIZE,
         };
         const results = await openAlexClient.getWorks(options);
+        const summary = summarizeWorksList(results);
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(results, null, 2),
+              text: JSON.stringify(summary, null, 2),
             },
           ],
         };
@@ -690,15 +861,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const options: SearchOptions = {
           filter,
           page: params.page || 1,
-          perPage: params.per_page || 25,
+          perPage: params.per_page || DEFAULT_PAGE_SIZE,
           sort: params.sort,
         };
         const results = await openAlexClient.getWorks(options);
+        const summary = summarizeWorksList(results);
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(results, null, 2),
+              text: JSON.stringify(summary, null, 2),
             },
           ],
         };
@@ -749,7 +921,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 },
                 citing_works: {
                   count: citingResults.meta.count,
-                  works: citingResults.results,
+                  works: citingResults.results.map(summarizeWork),
                 },
                 referenced_works: {
                   count: referenceIds.length,
@@ -763,18 +935,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_top_cited_works': {
         const filter = buildFilter(params);
+        // Add default minimum citation threshold for influential papers
+        const minCitations = params.min_citations !== undefined ? params.min_citations : 50;
+        if (minCitations > 0) {
+          filter.cited_by_count = `>${minCitations - 1}`;
+        }
         const options: SearchOptions = {
           search: params.query || params.topic,
           filter,
           sort: 'cited_by_count:desc',
-          perPage: params.per_page || 25,
+          perPage: params.per_page || DEFAULT_PAGE_SIZE,
         };
         const results = await openAlexClient.getWorks(options);
+        const summary = summarizeWorksList(results);
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(results, null, 2),
+              text: JSON.stringify(summary, null, 2),
             },
           ],
         };
@@ -785,7 +963,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const options: SearchOptions = {
           search: params.query,
           filter,
-          perPage: params.per_page || 25,
+          perPage: params.per_page || DEFAULT_PAGE_SIZE,
         };
         const results = await openAlexClient.getAuthors(options);
         return {
@@ -808,14 +986,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const options: SearchOptions = {
           filter,
           sort: params.sort,
-          perPage: params.per_page || 25,
+          perPage: params.per_page || DEFAULT_PAGE_SIZE,
         };
         const results = await openAlexClient.getWorks(options);
+        const summary = summarizeWorksList(results);
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(results, null, 2),
+              text: JSON.stringify(summary, null, 2),
             },
           ],
         };
@@ -877,7 +1056,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const options: SearchOptions = {
           search: params.query,
           filter,
-          perPage: params.per_page || 25,
+          perPage: params.per_page || DEFAULT_PAGE_SIZE,
         };
         const results = await openAlexClient.getInstitutions(options);
         return {
@@ -948,7 +1127,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const options: SearchOptions = {
           filter,
           groupBy: 'topics.id',
-          perPage: params.per_page || 25,
+          perPage: params.per_page || DEFAULT_PAGE_SIZE,
         };
 
         const results = await openAlexClient.getWorks(options);
@@ -997,7 +1176,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const options: SearchOptions = {
           search: params.query,
           filter,
-          perPage: params.per_page || 25,
+          perPage: params.per_page || DEFAULT_PAGE_SIZE,
         };
         const results = await openAlexClient.getSources(options);
         return {
