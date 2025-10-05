@@ -9,6 +9,11 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { OpenAlexClient, FilterOptions, SearchOptions } from './openalex-client.js';
 
+// Debug logging
+console.error('OpenAlex MCP Server starting...');
+console.error('Email:', process.env.OPENALEX_EMAIL);
+console.error('API Key:', process.env.OPENALEX_API_KEY ? 'Set' : 'Not set');
+
 // Initialize OpenAlex client
 const openAlexClient = new OpenAlexClient();
 
@@ -568,12 +573,16 @@ function buildFilter(params: any): FilterOptions {
 
 // List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
+  console.error('ListTools request received');
+  console.error('Returning', tools.length, 'tools');
   return { tools };
 });
 
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  console.error('Tool call received:', name);
+  console.error('Arguments:', JSON.stringify(args));
 
   try {
     // Type assertion for args
@@ -1002,6 +1011,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error handling tool call:', errorMessage);
+    console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
     return {
       content: [
         {
