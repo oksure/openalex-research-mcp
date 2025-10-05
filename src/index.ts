@@ -536,19 +536,22 @@ const server = new Server(
 function buildFilter(params: any): FilterOptions {
   const filter: FilterOptions = {};
 
-  // Map common parameters to OpenAlex filter format
-  if (params.from_publication_year) {
-    filter['from_publication_date'] = params.from_publication_year;
+  // Handle publication year range
+  const fromYear = params.from_publication_year || params.from_year;
+  const toYear = params.to_publication_year || params.to_year;
+
+  if (fromYear && toYear) {
+    // Both from and to: use range format
+    filter['publication_year'] = `${fromYear}-${toYear}`;
+  } else if (fromYear) {
+    // Only from: use > operator
+    filter['publication_year'] = `>${fromYear - 1}`;
+  } else if (toYear) {
+    // Only to: use < operator
+    filter['publication_year'] = `<${toYear + 1}`;
   }
-  if (params.to_publication_year) {
-    filter['to_publication_date'] = params.to_publication_year;
-  }
-  if (params.from_year) {
-    filter['from_publication_date'] = params.from_year;
-  }
-  if (params.to_year) {
-    filter['to_publication_date'] = params.to_year;
-  }
+
+  // Other filters
   if (params.cited_by_count) {
     filter['cited_by_count'] = params.cited_by_count;
   }
@@ -568,6 +571,7 @@ function buildFilter(params: any): FilterOptions {
     filter['institutions.display_name'] = params.institution;
   }
 
+  console.error('buildFilter result:', JSON.stringify(filter));
   return filter;
 }
 
@@ -649,7 +653,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'search_by_topic': {
-        const filter = buildFilter(args);
+        const filter = buildFilter(params);
         const options: SearchOptions = {
           search: params.topic,
           filter,
@@ -758,9 +762,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_top_cited_works': {
-        const filter = buildFilter(args);
+        const filter = buildFilter(params);
         const options: SearchOptions = {
-          search: params.query,
+          search: params.query || params.topic,
           filter,
           sort: 'cited_by_count:desc',
           perPage: params.per_page || 25,
@@ -777,7 +781,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'search_authors': {
-        const filter = buildFilter(args);
+        const filter = buildFilter(params);
         const options: SearchOptions = {
           search: params.query,
           filter,
@@ -869,7 +873,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'search_institutions': {
-        const filter = buildFilter(args);
+        const filter = buildFilter(params);
         const options: SearchOptions = {
           search: params.query,
           filter,
@@ -887,7 +891,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'analyze_topic_trends': {
-        const filter = buildFilter(args);
+        const filter = buildFilter(params);
         const options: SearchOptions = {
           search: params.query,
           filter,
@@ -908,7 +912,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const comparisons = [];
 
         for (const topic of params.topics) {
-          const filter = buildFilter(args);
+          const filter = buildFilter(params);
           const options: SearchOptions = {
             search: topic,
             filter,
@@ -959,7 +963,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'analyze_geographic_distribution': {
-        const filter = buildFilter(args);
+        const filter = buildFilter(params);
         const options: SearchOptions = {
           search: params.query,
           filter,
@@ -989,7 +993,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'search_sources': {
-        const filter = buildFilter(args);
+        const filter = buildFilter(params);
         const options: SearchOptions = {
           search: params.query,
           filter,

@@ -147,10 +147,16 @@ export class OpenAlexClient {
   ): Promise<OpenAlexResponse<T>> {
     try {
       const params = this.buildQueryParams(options);
+      console.error('SearchEntities called:');
+      console.error('  Entity type:', entityType);
+      console.error('  Options:', JSON.stringify(options, null, 2));
+      console.error('  Query params:', JSON.stringify(params, null, 2));
       const response = await this.client.get(`/${entityType}`, { params });
+      console.error('  Response status:', response.status);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
+        console.error('  API Error:', error.response?.status, error.response?.data);
         throw new Error(`Failed to search ${entityType}: ${error.message}`);
       }
       throw error;

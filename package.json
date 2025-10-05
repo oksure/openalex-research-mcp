@@ -18,7 +18,9 @@
     "start": "node build/index.js",
     "dev": "tsc && node build/index.js",
     "watch": "tsc --watch",
-    "prepublishOnly": "npm run build"
+    "test": "node tests/quick-test.js",
+    "test:integration": "node tests/integration.test.js",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "mcp",

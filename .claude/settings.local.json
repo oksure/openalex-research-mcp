@@ -4,7 +4,12 @@
       "WebFetch(domain:docs.openalex.org)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npm view:*)",
+      "Bash(npm run build:*)",
+      "Bash(node:*)",
+      "Bash(curl \"https://api.openalex.org/works?per_page=1\")",
+      "Bash(curl -s \"https://api.openalex.org/works?search=AI&per_page=1\")"
     ],
     "deny": [],
     "ask": []
