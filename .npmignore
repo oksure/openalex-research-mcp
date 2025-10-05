@@ -1,0 +1,29 @@
+# Source files
+src/
+tsconfig.json
+
+# Development files
+.claude/
+.env
+.env.example
+*.log
+
+# Git files
+.git/
+.gitignore
+
+# Node modules (will be installed by users)
+node_modules/
+
+# Examples and configs
+claude_desktop_config.example.json
+
+# Documentation (included via package.json "files")
+CHANGELOG.md
+
+# Mac
+.DS_Store
+
+# Build artifacts not needed
+*.tsbuildinfo
+*.map

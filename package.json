@@ -4,22 +4,49 @@
   "description": "MCP server for OpenAlex API - enabling literature review and research landscaping",
   "type": "module",
   "main": "build/index.js",
+  "bin": {
+    "openalex-mcp": "build/index.js"
+  },
+  "files": [
+    "build",
+    "README.md",
+    "LICENSE",
+    "QUICKSTART.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node build/index.js",
     "dev": "tsc && node build/index.js",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "openalex",
     "literature-review",
     "research",
     "citations",
-    "academic"
+    "academic",
+    "scholarly",
+    "papers",
+    "claude",
+    "ai"
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oksure/openalex-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oksure/openalex-mcp/issues"
+  },
+  "homepage": "https://github.com/oksure/openalex-mcp#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
     "axios": "^1.7.2"

@@ -37,8 +37,21 @@ Access 240+ million scholarly works through 18 specialized tools:
 
 ## Installation
 
+### Option 1: Install from npm (Recommended)
+
 ```bash
-# Clone or navigate to the project directory
+# Install globally
+npm install -g openalex-mcp
+
+# Or use directly with npx (no installation needed)
+npx openalex-mcp
+```
+
+### Option 2: Install from source
+
+```bash
+# Clone the repository
+git clone https://github.com/oksure/openalex-mcp.git
 cd openalex-mcp
 
 # Install dependencies
@@ -71,6 +84,22 @@ Add to your Claude Desktop config file:
 **MacOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
 
+**If you installed via npm/npx:**
+```json
+{
+  "mcpServers": {
+    "openalex": {
+      "command": "npx",
+      "args": ["-y", "openalex-mcp"],
+      "env": {
+        "OPENALEX_EMAIL": "your.email@example.com"
+      }
+    }
+  }
+}
+```
+
+**If you installed from source:**
 ```json
 {
   "mcpServers": {
