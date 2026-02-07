@@ -8,6 +8,9 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { OpenAlexClient, FilterOptions, SearchOptions } from './openalex-client.js';
+import { z } from 'zod';
+import { CONFIG } from './config.js';
+import { validateInput } from './validation.js';
 
 // Debug logging
 console.error('OpenAlex MCP Server starting...');
@@ -18,7 +21,7 @@ console.error('API Key:', process.env.OPENALEX_API_KEY ? 'Set' : 'Not set');
 const openAlexClient = new OpenAlexClient();
 
 // Default page size for MCP clients (can be overridden with MCP_DEFAULT_PAGE_SIZE env var)
-const DEFAULT_PAGE_SIZE = parseInt(process.env.MCP_DEFAULT_PAGE_SIZE || '10', 10);
+const DEFAULT_PAGE_SIZE = parseInt(process.env.MCP_DEFAULT_PAGE_SIZE || String(CONFIG.MCP.DEFAULT_PAGE_SIZE), 10);
 
 // Helper function to filter work data to essential fields only (reduces context usage)
 function summarizeWork(work: any) {
@@ -684,6 +687,15 @@ const tools: Tool[] = [
       },
     },
   },
+  {
+    name: 'health_check',
+    description:
+      'Check the health status of the OpenAlex MCP server and API connectivity. Returns cache status and configuration information.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ];
 
 // Create server instance
@@ -762,13 +774,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     switch (name) {
       case 'search_works': {
-        const filter = buildFilter(params);
+        const { searchWorksSchema } = await import('./validation.js');
+        const validated = validateInput(searchWorksSchema, params, 'search_works');
+        const filter = buildFilter(validated);
         const options: SearchOptions = {
-          search: params.query,
+          search: validated.query,
           filter,
-          sort: params.sort,
-          page: params.page || 1,
-          perPage: params.per_page || DEFAULT_PAGE_SIZE,
+          sort: validated.sort,
+          page: validated.page || 1,
+          perPage: validated.per_page || DEFAULT_PAGE_SIZE,
         };
         const results = await openAlexClient.getWorks(options);
         const summary = summarizeWorksList(results);
@@ -1189,6 +1203,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case 'health_check': {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                status: 'healthy',
+                timestamp: new Date().toISOString(),
+                api: {
+                  baseUrl: CONFIG.API.BASE_URL,
+                  timeout: CONFIG.API.TIMEOUT,
+                  emailConfigured: !!process.env.OPENALEX_EMAIL,
+                  apiKeyConfigured: !!process.env.OPENALEX_API_KEY,
+                },
+                cache: {
+                  enabled: true,
+                  size: openAlexClient.getCacheSize(),
+                  maxSize: CONFIG.CACHE.MAX_SIZE,
+                  ttlMs: CONFIG.CACHE.TTL_MS,
+                },
+                config: {
+                  defaultPageSize: CONFIG.MCP.DEFAULT_PAGE_SIZE,
+                  maxPageSize: CONFIG.MCP.MAX_PAGE_SIZE,
+                  rateLimit: CONFIG.API.RATE_LIMIT,
+                },
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -1196,11 +1241,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error handling tool call:', errorMessage);
     console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
+
+    const errorDetails: any = {
+      tool: name,
+      error: errorMessage,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (error instanceof Error) {
+      errorDetails.type = error.constructor.name;
+      if (error.stack) {
+        errorDetails.stack = error.stack.split('\n').slice(0, 3).join('\n');
+      }
+    }
+
     return {
       content: [
         {
           type: 'text',
-          text: `Error: ${errorMessage}`,
+          text: JSON.stringify({
+            success: false,
+            error: errorMessage,
+            details: errorDetails,
+          }, null, 2),
         },
       ],
       isError: true,
