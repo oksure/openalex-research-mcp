@@ -1,6 +1,13 @@
 # OpenAlex MCP Server
 
-A Model Context Protocol (MCP) server that provides access to OpenAlex, a comprehensive open catalog of scholarly papers, authors, institutions, and more. This server is specifically designed to empower AI assistants to conduct literature reviews, analyze research trends, and map the scholarly landscape.
+A Model Context Protocol (MCP) server that provides access to OpenAlex, a comprehensive open catalog of scholarly papers, authors, institutions, and more. Designed to empower AI assistants to conduct literature reviews, analyze research trends, and map the scholarly landscape.
+
+**Features:**
+- ⚡️ **In-memory caching** with TTL for fast repeated requests
+- 🔄 **Retry logic** with exponential backoff for resilient API calls
+- ✅ **Input validation** with Zod schemas
+- 🏥 **Health check** tool for monitoring
+- 📊 **18+ specialized tools** for research
 
 ## Features
 
