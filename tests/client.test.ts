@@ -1,14 +1,28 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
 import { OpenAlexClient } from '../src/openalex-client.js';
 
 vi.mock('axios');
+
+// Helper to create a proper axios mock
+function createMockAxios(mockGet: any) {
+  return {
+    get: mockGet,
+    interceptors: {
+      response: {
+        use: vi.fn(),
+      },
+    },
+  };
+}
 
 describe('OpenAlexClient', () => {
   let client: OpenAlexClient;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default mock that just returns empty interceptors
+    vi.mocked(axios.create).mockReturnValue(createMockAxios(vi.fn()) as any);
     client = new OpenAlexClient({
       email: 'test@example.com',
       enableCache: false,
@@ -34,9 +48,9 @@ describe('OpenAlexClient', () => {
         publication_year: 2023,
       };
 
-      vi.mocked(axios.create).mockReturnValue({
-        get: vi.fn().mockResolvedValue({ data: mockWork }),
-      } as any);
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn().mockResolvedValue({ data: mockWork })
+      ) as any);
 
       const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
       const result = await testClient.getEntity('works', 'W12345');
@@ -45,9 +59,9 @@ describe('OpenAlexClient', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      vi.mocked(axios.create).mockReturnValue({
-        get: vi.fn().mockRejectedValue(new Error('Network error')),
-      } as any);
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn().mockRejectedValue(new Error('Network error'))
+      ) as any);
 
       const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
 
@@ -62,9 +76,9 @@ describe('OpenAlexClient', () => {
         results: [{ id: 'W1', title: 'Test' }],
       };
 
-      vi.mocked(axios.create).mockReturnValue({
-        get: vi.fn().mockResolvedValue({ data: mockResponse }),
-      } as any);
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn().mockResolvedValue({ data: mockResponse })
+      ) as any);
 
       const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
       const result = await testClient.getWorks({ search: 'machine learning' });
@@ -80,9 +94,9 @@ describe('OpenAlexClient', () => {
         results: [],
       };
 
-      vi.mocked(axios.create).mockReturnValue({
-        get: vi.fn().mockResolvedValue({ data: mockResponse }),
-      } as any);
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn().mockResolvedValue({ data: mockResponse })
+      ) as any);
 
       const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
       const result = await testClient.getWorks({ search: 'nonexistent' });
@@ -100,9 +114,9 @@ describe('OpenAlexClient', () => {
         ],
       };
 
-      vi.mocked(axios.create).mockReturnValue({
-        get: vi.fn().mockResolvedValue({ data: mockResults }),
-      } as any);
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn().mockResolvedValue({ data: mockResults })
+      ) as any);
 
       const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
       const result = await testClient.autocomplete('works', 'machine');
@@ -116,12 +130,12 @@ describe('OpenAlexClient', () => {
       const mockWork = { id: 'W12345', title: 'Test' };
       let callCount = 0;
 
-      vi.mocked(axios.create).mockReturnValue({
-        get: vi.fn(() => {
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn(() => {
           callCount++;
           return Promise.resolve({ data: mockWork });
-        }),
-      } as any);
+        })
+      ) as any);
 
       const cachedClient = new OpenAlexClient({ email: 'test@example.com', enableCache: true });
 
@@ -132,12 +146,11 @@ describe('OpenAlexClient', () => {
     });
 
     it('should clear cache', async () => {
-      const cachedClient = new OpenAlexClient({ email: 'test@example.com', enableCache: true });
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn().mockResolvedValue({ data: { id: 'W12345', title: 'Test' } })
+      ) as any);
 
-      const mockWork = { id: 'W12345', title: 'Test' };
-      vi.mocked(axios.create).mockReturnValue({
-        get: vi.fn().mockResolvedValue({ data: mockWork }),
-      } as any);
+      const cachedClient = new OpenAlexClient({ email: 'test@example.com', enableCache: true });
 
       await cachedClient.getEntity('works', 'W12345');
       expect(cachedClient.getCacheSize()).toBeGreaterThan(0);
@@ -152,15 +165,15 @@ describe('OpenAlexClient', () => {
       let attempts = 0;
       const mockWork = { id: 'W12345', title: 'Test' };
 
-      vi.mocked(axios.create).mockReturnValue({
-        get: vi.fn(() => {
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn(() => {
           attempts++;
           if (attempts < 2) {
             return Promise.reject(new Error('Network error'));
           }
           return Promise.resolve({ data: mockWork });
-        }),
-      } as any);
+        })
+      ) as any);
 
       const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
       const result = await testClient.getEntity('works', 'W12345');
@@ -170,9 +183,9 @@ describe('OpenAlexClient', () => {
     });
 
     it('should fail after max retries', async () => {
-      vi.mocked(axios.create).mockReturnValue({
-        get: vi.fn().mockRejectedValue(new Error('Network error')),
-      } as any);
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn().mockRejectedValue(new Error('Network error'))
+      ) as any);
 
       const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
 
