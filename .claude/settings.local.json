@@ -14,7 +14,9 @@
       "WebSearch",
       "WebFetch(domain:docs.typingmind.com)",
       "WebFetch(domain:github.com)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(git stash pop)",
+      "Bash(npm version patch)"
     ],
     "deny": [],
     "ask": []
