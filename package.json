@@ -1,6 +1,6 @@
 {
   "name": "openalex-research-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "MCP server for OpenAlex API - enabling literature review and research landscaping",
   "type": "module",
   "main": "build/index.js",
