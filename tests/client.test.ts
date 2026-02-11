@@ -192,4 +192,117 @@ describe('OpenAlexClient', () => {
       await expect(testClient.getEntity('works', 'W12345')).rejects.toThrow();
     });
   });
+
+  describe('findSimilarWorks', () => {
+    it('should find similar works with a query', async () => {
+      const mockResponse = {
+        meta: {
+          count: 25,
+          query: 'machine learning for drug discovery',
+          filters_applied: {},
+          timing: { embed_ms: 145, search_ms: 89, hydrate_ms: 156, total_ms: 412 },
+        },
+        results: [
+          {
+            score: 0.8934,
+            work: {
+              id: 'https://openalex.org/W4385012847',
+              title: 'Deep learning approaches for molecular property prediction',
+              publication_year: 2023,
+            },
+          },
+        ],
+      };
+
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn().mockResolvedValue({ data: mockResponse })
+      ) as any);
+
+      const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
+      const result = await testClient.findSimilarWorks({ query: 'machine learning for drug discovery' });
+
+      expect(result).toEqual(mockResponse);
+      expect(result.results).toHaveLength(1);
+      expect(result.results[0].score).toBe(0.8934);
+      expect(result.results[0].work.title).toBe('Deep learning approaches for molecular property prediction');
+    });
+
+    it('should pass count and filter parameters', async () => {
+      const mockResponse = {
+        meta: { count: 10, query: 'climate change', filters_applied: { publication_year: '>2020' }, timing: {} },
+        results: [],
+      };
+
+      const mockGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(mockGet) as any);
+
+      const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
+      await testClient.findSimilarWorks({
+        query: 'climate change',
+        count: 10,
+        filter: { publication_year: '>2020', is_oa: true },
+      });
+
+      const callArgs = mockGet.mock.calls[0];
+      expect(callArgs[0]).toBe('/find/works');
+      expect(callArgs[1].params.query).toBe('climate change');
+      expect(callArgs[1].params.count).toBe('10');
+      expect(callArgs[1].params.filter).toBe('publication_year:>2020,is_oa:true');
+    });
+
+    it('should handle empty results', async () => {
+      const mockResponse = {
+        meta: { count: 0, query: 'very obscure query', filters_applied: {}, timing: {} },
+        results: [],
+      };
+
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn().mockResolvedValue({ data: mockResponse })
+      ) as any);
+
+      const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
+      const result = await testClient.findSimilarWorks({ query: 'very obscure query' });
+
+      expect(result.results).toHaveLength(0);
+    });
+
+    it('should cache results when enabled', async () => {
+      const mockResponse = {
+        meta: { count: 1, query: 'test', filters_applied: {}, timing: {} },
+        results: [{ score: 0.9, work: { id: 'W1', title: 'Cached' } }],
+      };
+
+      let callCount = 0;
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(
+        vi.fn(() => {
+          callCount++;
+          return Promise.resolve({ data: mockResponse });
+        })
+      ) as any);
+
+      const cachedClient = new OpenAlexClient({ email: 'test@example.com', enableCache: true });
+      await cachedClient.findSimilarWorks({ query: 'test' });
+      await cachedClient.findSimilarWorks({ query: 'test' });
+
+      expect(callCount).toBe(1);
+    });
+
+    it('should include api_key when configured', async () => {
+      const mockResponse = {
+        meta: { count: 0, query: 'test', filters_applied: {}, timing: {} },
+        results: [],
+      };
+
+      const mockGet = vi.fn().mockResolvedValue({ data: mockResponse });
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(mockGet) as any);
+
+      const testClient = new OpenAlexClient({ email: 'test@example.com', apiKey: 'test-key', enableCache: false });
+      await testClient.findSimilarWorks({ query: 'test' });
+
+      const callArgs = mockGet.mock.calls[0];
+      expect(callArgs[0]).toBe('/find/works');
+      expect(callArgs[1].params.api_key).toBe('test-key');
+      expect(callArgs[1].params.mailto).toBeUndefined();
+    });
+  });
 });

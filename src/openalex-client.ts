@@ -70,6 +70,12 @@ export interface SearchOptions {
   sample?: number;
 }
 
+export interface FindSimilarWorksOptions {
+  query: string;
+  count?: number;
+  filter?: FilterOptions;
+}
+
 export interface OpenAlexResponse<T> {
   meta: {
     count: number;
@@ -378,5 +384,56 @@ export class OpenAlexClient {
    */
   async getFunders(options: SearchOptions = {}): Promise<OpenAlexResponse<any>> {
     return this.searchEntities('funders', options);
+  }
+
+  /**
+   * Find semantically similar works using AI embeddings.
+   * Uses the /find/works endpoint which requires an API key.
+   */
+  async findSimilarWorks(options: FindSimilarWorksOptions): Promise<any> {
+    const params: Record<string, string> = {};
+
+    if (this.email && !this.apiKey) params.mailto = this.email;
+    if (this.apiKey) params.api_key = this.apiKey;
+
+    params.query = options.query;
+
+    if (options.count) {
+      params.count = options.count.toString();
+    }
+
+    if (options.filter) {
+      const filters: string[] = [];
+      for (const [key, value] of Object.entries(options.filter)) {
+        filters.push(`${key}:${value}`);
+      }
+      if (filters.length > 0) {
+        params.filter = filters.join(',');
+      }
+    }
+
+    const cacheKey = `find/works?${JSON.stringify(params)}`;
+
+    if (this.enableCache) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const result = await this.retryWithBackoff(async () => {
+      console.error('findSimilarWorks called:');
+      console.error('  Options:', JSON.stringify(options, null, 2));
+      console.error('  Query params:', JSON.stringify(params, null, 2));
+      const response = await this.client.get('/find/works', { params });
+      console.error('  Response status:', response.status);
+      return response.data;
+    }, 'findSimilarWorks');
+
+    if (this.enableCache) {
+      this.cache.set(cacheKey, result);
+    }
+
+    return result;
   }
 }

@@ -7,7 +7,7 @@ import {
   ListToolsRequestSchema,
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import { OpenAlexClient, FilterOptions, SearchOptions } from './openalex-client.js';
+import { OpenAlexClient, FilterOptions, SearchOptions, FindSimilarWorksOptions } from './openalex-client.js';
 import { z } from 'zod';
 import { CONFIG } from './config.js';
 import { validateInput } from './validation.js';
@@ -321,6 +321,38 @@ const tools: Tool[] = [
         },
       },
       required: ['query', 'entity_type'],
+    },
+  },
+  {
+    name: 'find_similar_works',
+    description:
+      'Find semantically similar works using AI embeddings. Unlike keyword search, this finds works about the same topic even if they use different terminology. Powered by the /find/works endpoint. Requires an API key (OPENALEX_API_KEY). Costs 1,000 credits per query. Only works with abstracts are indexed (~217M works). English-optimized.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'The text to find similar works for (required, max 10,000 chars). Can be a sentence, paragraph, or research question.',
+        },
+        count: {
+          type: 'number',
+          description: 'Number of results to return (1-100, default: 25)',
+        },
+        from_publication_year: {
+          type: 'number',
+          description: 'Filter works published from this year onwards',
+        },
+        to_publication_year: {
+          type: 'number',
+          description: 'Filter works published up to this year',
+        },
+        is_oa: {
+          type: 'boolean',
+          description: 'Filter for open access works only',
+        },
+      },
+      required: ['query'],
     },
   },
 
@@ -1229,6 +1261,51 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   rateLimit: CONFIG.API.RATE_LIMIT,
                 },
               }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'find_similar_works': {
+        const { findSimilarWorksSchema } = await import('./validation.js');
+        const validated = validateInput(findSimilarWorksSchema, params, 'find_similar_works');
+        const filter: FilterOptions = {};
+
+        const fromYear = validated.from_publication_year;
+        const toYear = validated.to_publication_year;
+
+        if (fromYear && toYear) {
+          filter['publication_year'] = `${fromYear}-${toYear}`;
+        } else if (fromYear) {
+          filter['publication_year'] = `>${fromYear - 1}`;
+        } else if (toYear) {
+          filter['publication_year'] = `<${toYear + 1}`;
+        }
+
+        if (validated.is_oa !== undefined) {
+          filter['is_oa'] = validated.is_oa;
+        }
+
+        const options: FindSimilarWorksOptions = {
+          query: validated.query,
+          count: validated.count,
+          filter: Object.keys(filter).length > 0 ? filter : undefined,
+        };
+        const results = await openAlexClient.findSimilarWorks(options);
+
+        const summarized = {
+          meta: results.meta,
+          results: results.results?.map((r: any) => ({
+            score: r.score,
+            work: summarizeWork(r.work),
+          })) || [],
+        };
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(summarized, null, 2),
             },
           ],
         };

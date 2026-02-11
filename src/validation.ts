@@ -127,6 +127,14 @@ export const searchSourcesSchema = z.object({
   per_page: z.number().positive().max(200).optional(),
 });
 
+export const findSimilarWorksSchema = z.object({
+  query: z.string().min(1).max(10000),
+  count: z.number().positive().max(100).optional(),
+  from_publication_year: z.number().positive().optional(),
+  to_publication_year: z.number().positive().optional(),
+  is_oa: z.boolean().optional(),
+});
+
 export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown, context: string): T {
   try {
     return schema.parse(data);
