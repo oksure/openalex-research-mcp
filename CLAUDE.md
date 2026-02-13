@@ -133,15 +133,20 @@ npm test
 git add .
 git commit -m "Description of changes"
 
-# 6. Version bump (triggers tests again via prepublishOnly)
+# 6. Check npm for existing versions to avoid conflicts
+npm view openalex-research-mcp versions --json
+
+# 7. Version bump (triggers tests again via prepublishOnly)
 npm version patch  # or minor/major
 
-# 7. Push and create release (triggers GitHub Actions npm publish)
+# 8. Push with tags (tag push triggers GitHub Actions npm publish via OIDC trusted publishing)
 git push && git push --tags
+
+# 9. Create GitHub release
 gh release create v0.X.X --title "v0.X.X" --notes "Release notes"
 ```
 
-Full instructions in `NPM_PUBLISHING.md`. Requires `NPM_TOKEN` secret in GitHub repo settings.
+Publishing uses npm trusted publishing (OIDC) — no `NPM_TOKEN` secret needed. The CI workflow triggers on `v*` tag pushes.
 
 ## Adding New Tools
 
