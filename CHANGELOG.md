@@ -2,6 +2,18 @@
 
 All notable changes to the OpenAlex MCP Server will be documented in this file.
 
+## [0.2.2] - 2026-02-14
+
+### Changed
+- **Switched CI to npm trusted publishing (OIDC)**: Removed token-based npm auth in favor of OpenID Connect provenance-based publishing
+- **Upgraded CI to Node 22**
+
+### Fixed
+- **Gitignored `.claude/settings.local.json`**: Machine-specific settings no longer tracked in the repo
+
+### Chores
+- Updated GitHub repo description and added 14 topic tags for discoverability
+
 ## [0.1.1] - 2025-10-06
 
 ### Added
