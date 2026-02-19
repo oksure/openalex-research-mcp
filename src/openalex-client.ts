@@ -185,7 +185,10 @@ export class OpenAlexClient {
     }
 
     if (options.sort) {
-      params.sort = options.sort;
+      // "relevance_score" without a suffix causes 400 errors from OpenAlex
+      // (only :desc is valid for relevance_score). Default to :desc when omitted.
+      const sort = options.sort;
+      params.sort = sort.includes(':') ? sort : `${sort}:desc`;
     }
 
     if (options.page) {
