@@ -212,6 +212,27 @@ export class OpenAlexClient {
   }
 
   /**
+   * Normalize an entity ID for use in API requests.
+   * - Bare DOIs (e.g. "10.1234/foo") are prefixed with "doi:" so the slash
+   *   is not misinterpreted as a path separator.
+   * - Full URLs (e.g. "https://doi.org/...") are percent-encoded so axios
+   *   does not treat them as absolute URLs.
+   * - OpenAlex IDs (e.g. "W2741809807") and prefixed IDs (e.g. "doi:...")
+   *   are returned as-is.
+   */
+  private normalizeId(id: string): string {
+    // Bare DOI: starts with "10." and contains a slash
+    if (/^10\.\d{4,9}\//.test(id)) {
+      return `doi:${id}`;
+    }
+    // Full URL: encode so axios keeps it as a path segment, not an absolute URL
+    if (/^https?:\/\//i.test(id)) {
+      return encodeURIComponent(id);
+    }
+    return id;
+  }
+
+  /**
    * Get a single entity by ID
    */
   async getEntity(entityType: string, id: string): Promise<any> {
@@ -224,12 +245,13 @@ export class OpenAlexClient {
       }
     }
 
+    const normalizedId = this.normalizeId(id);
     const result = await this.retryWithBackoff(async () => {
       const params: Record<string, string> = {};
       if (this.email && !this.apiKey) params.mailto = this.email;
       if (this.apiKey) params.api_key = this.apiKey;
 
-      const response = await this.client.get(`/${entityType}/${id}`, { params });
+      const response = await this.client.get(`/${entityType}/${normalizedId}`, { params });
       return response.data;
     }, `getEntity(${entityType}, ${id})`);
 
