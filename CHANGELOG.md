@@ -2,6 +2,40 @@
 
 All notable changes to the OpenAlex MCP Server will be documented in this file.
 
+## [0.3.0] - 2026-03-01
+
+### Added
+
+#### Credibility-Gated Journal & Conference Presets
+- **`list_journal_presets`**: Lists all named journal/conference presets and institution group presets with descriptions and example usage
+- **`search_in_journal_list`**: Search within a named preset list (UTD24, FT50, AJG 4*/4/3, top AI conferences, etc.) with optional institution filtering — the primary tool for top-journal research workflows
+- Built-in venue presets: `utd24` (UT Dallas 24), `ft50` (Financial Times 50), `abs4star` (AJG/ABS 4*), `abs4`, `abs3`, `ms_misq_ops`, `top_ai_conferences`, `top_cs_conferences`, `nature_science`
+- Built-in institution group presets: `harvard_stanford_mit`, `ivy_league`, `top_us`, `top_us_business`, `insead_london`, `top_global_business`, `top_china`
+- `author_institution` filter parameter (pipe-separated OR) on `search_works`, `search_by_topic`, `search_in_journal_list`, `get_top_cited_works`
+- `institution_group` preset parameter on same tools
+- Venue filters on `search_works`: `source_name`, `source_id`, `source_issn`
+- `min_citations` shorthand on `search_works` and `search_by_topic`
+
+#### New Research Tools
+- **`search_works_in_venue`**: Search within any specific venue by name, ISSN, or OpenAlex source ID
+- **`get_top_venues_for_field`**: Ranked list of top journals/conferences in a field by h-index
+- **`check_venue_quality`**: Inspect h-index, 2yr mean citedness, OA status of any venue
+- **`get_author_profile`**: Comprehensive author profile with h-index, i10-index, top-cited works, recent works, and affiliation history
+- **`search_authors_by_expertise`**: Find leading experts in a topic ranked by h-index
+- **`find_review_articles`**: Find review papers and meta-analyses (high-value context citations)
+- **`find_seminal_papers`**: Find foundational "must-cite" papers (high citations, published 5+ years ago)
+- **`batch_resolve_references`**: Resolve up to 20 DOIs/IDs to full metadata in one call
+- **`find_open_access_version`**: Find freely accessible versions of papers with PDF links
+
+#### Improvements to Existing Tools
+- **`search_authors`**: Now returns structured summaries with h-index, i10-index, 2yr mean citedness, and top topics (was returning a raw API dump); default sort is `cited_by_count:desc`
+- **`search_sources`**: Now returns structured `summarizeSource` data sorted by h-index descending (was raw dump)
+- **`summarizeWork`** (all search results): Now includes `fwci` (Field-Weighted Citation Impact), `source_id`, `source_issn_l`, `source_type`; abstract is properly reconstructed from the inverted index (was joining keys out of order)
+
+### Fixed
+- **`get_author_works` date filter**: Was incorrectly using `from_publication_date` filter (rejected by API); now uses the correct `publication_year` range format
+- **Abstract reconstruction in search results**: Was joining the random keys of the inverted index instead of reconstructing the text word-by-word at correct positions
+
 ## [0.2.2] - 2026-02-14
 
 ### Changed

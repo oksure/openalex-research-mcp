@@ -7,18 +7,27 @@ A Model Context Protocol (MCP) server that provides access to OpenAlex, a compre
 - 🔄 **Retry logic** with exponential backoff for resilient API calls
 - ✅ **Input validation** with Zod schemas
 - 🏥 **Health check** tool for monitoring
-- 📊 **18+ specialized tools** for research
+- 📊 **31 specialized tools** for research
+- 🎓 **Curated journal presets** — UTD24, FT50, AJG/ABS tiers, top AI conferences, and more
+- 🏛️ **Institution group presets** — Ivy League, Top US, INSEAD+London, and more
 
 ## Features
 
-Access 240+ million scholarly works through 18 specialized tools:
+Access 240+ million scholarly works through 31 specialized tools:
 
 ### Literature Search & Discovery
-- **search_works**: Advanced search with Boolean operators, filters, and sorting
-- **get_work**: Get detailed metadata for a specific work
+- **search_works**: Advanced search with Boolean operators, venue/journal filters, institution filters, citation thresholds, and sorting
+- **get_work**: Get complete metadata for a specific work (all authors, full abstract, references)
 - **get_related_works**: Find similar papers based on citations and topics
 - **search_by_topic**: Explore literature in specific research domains
 - **autocomplete_search**: Fast typeahead search for all entity types
+
+### Credibility-Gated Search (Journal & Conference Presets)
+- **list_journal_presets**: List all available named journal/conference and institution group presets
+- **search_in_journal_list**: Search within a named preset list (UTD24, FT50, AJG 4*/4/3, top AI conferences, etc.) with optional institution filtering
+- **search_works_in_venue**: Search within a specific venue by name, ISSN, or OpenAlex ID
+- **get_top_venues_for_field**: Discover top journals/conferences in a field ranked by h-index
+- **check_venue_quality**: Inspect h-index, impact, and indexing status of any venue
 
 ### Citation Analysis
 - **get_work_citations**: Forward citation analysis (who cites this work)
@@ -27,10 +36,18 @@ Access 240+ million scholarly works through 18 specialized tools:
 - **get_top_cited_works**: Find the most influential papers in a field
 
 ### Author & Institution Analysis
-- **search_authors**: Find researchers with publication and citation metrics
+- **search_authors**: Find researchers with h-index, citation metrics, and affiliations
+- **search_authors_by_expertise**: Find leading experts in a topic ranked by h-index
+- **get_author_profile**: Full research profile: h-index, i10-index, top works, recent works
 - **get_author_works**: Analyze an author's publication history
 - **get_author_collaborators**: Map co-authorship networks
 - **search_institutions**: Find leading academic institutions
+
+### High-Value Citation Finding
+- **find_review_articles**: Find review papers and meta-analyses (high-value context citations)
+- **find_seminal_papers**: Find foundational "must-cite" papers (high citation count, published 5+ years ago)
+- **find_open_access_version**: Find freely available versions of papers with PDF links
+- **batch_resolve_references**: Validate up to 20 DOIs/IDs at once
 
 ### Research Landscape & Trends
 - **analyze_topic_trends**: Track research evolution over time
@@ -40,7 +57,72 @@ Access 240+ million scholarly works through 18 specialized tools:
 
 ### Entity Lookup
 - **get_entity**: Get detailed information for any OpenAlex entity
-- **search_sources**: Find journals, conferences, and publication venues
+- **search_sources**: Find journals, conferences, and publication venues (sorted by h-index)
+
+---
+
+## Journal & Conference Presets
+
+Presets let you restrict searches to credible, high-impact venues and institution groups without manually specifying ISSNs or names. Call `list_journal_presets` to see all available options at any time.
+
+### Available Journal/Conference Presets
+
+| Key | Name | Description |
+|---|---|---|
+| `utd24` | UT Dallas 24 | Official UTD journal list for business school rankings (34 journals) |
+| `ft50` | FT50 Journals | Financial Times 50 journals for MBA/business school rankings |
+| `abs4star` | AJG/ABS 4\* | World elite journals — the most prestigious tier in the ABS Guide |
+| `abs4` | AJG/ABS 4 | Top international journals — excellent quality |
+| `abs3` | AJG/ABS 3 | Internationally recognised journals — solid quality |
+| `ms_misq_ops` | MS + IS + Operations | Management Science, M&SOM, MIS Quarterly, ISR, JMIS, OR, POM |
+| `top_ai_conferences` | Top AI Conferences | NeurIPS, ICML, ICLR, AAAI, CVPR, ICCV, ACL, EMNLP, KDD, IJCAI |
+| `top_cs_conferences` | Top CS Conferences | SOSP, OSDI, SIGCOMM, CHI, VLDB, SIGMOD, PLDI |
+| `nature_science` | Nature & Science Family | Nature, Science, and branded sub-journals |
+
+### Available Institution Group Presets
+
+| Key | Name | Institutions |
+|---|---|---|
+| `harvard_stanford_mit` | Harvard / Stanford / MIT | Harvard, Stanford, MIT |
+| `ivy_league` | Ivy League | All 8 Ivy League universities |
+| `top_us` | Top US Research Universities | Harvard, Stanford, MIT, Berkeley, Caltech, Chicago, Princeton, Yale, Columbia, Penn |
+| `top_us_business` | Top US Business Schools | Harvard, Stanford, Wharton, Booth, Kellogg, Sloan, Columbia, Stern, Darden, Tuck |
+| `insead_london` | INSEAD + London Schools | INSEAD, LBS, Imperial, LSE, Oxford, Cambridge |
+| `top_global_business` | Top Global Business Schools | Best of `top_us_business` + INSEAD, LBS, Oxford, Cambridge |
+| `top_china` | Top Chinese Universities | Peking, Tsinghua, Fudan, SJTU, ZJU, CUHK, HKU |
+
+### Example Preset Queries
+
+```
+# AI papers in UTD24 journals
+search_in_journal_list(query="artificial intelligence", journal_list="utd24")
+
+# AI papers in Management Science + M&SOM
+search_in_journal_list(query="artificial intelligence", journal_list="ms_misq_ops")
+
+# AI papers in FT50 journals since 2020
+search_in_journal_list(query="artificial intelligence", journal_list="ft50", from_year=2020)
+
+# AI papers in top AI conferences
+search_in_journal_list(query="artificial intelligence", journal_list="top_ai_conferences")
+
+# AI papers in AJG 4* journals
+search_in_journal_list(query="artificial intelligence", journal_list="abs4star")
+
+# AI papers in UTD24 journals by Harvard/Stanford/MIT authors
+search_in_journal_list(query="artificial intelligence", journal_list="utd24", institution_group="harvard_stanford_mit")
+
+# AI papers by professors at INSEAD
+search_works(query="artificial intelligence", author_institution="INSEAD")
+
+# AI papers by anyone from Harvard, Stanford, or MIT
+search_works(query="artificial intelligence", institution_group="harvard_stanford_mit")
+```
+
+### Requesting Additional Presets
+
+> **📬 Want a new journal group added?**
+> The preset lists (UTD24, FT50, AJG tiers, etc.) are curated in the source code. If your field uses a different ranking system — ABDC, VHB-JQ, CNRS, Norwegian list, discipline-specific lists, or any custom journal group — **open a GitHub issue** and I will add it. Include the list name, a short description, and the ISSNs or venue names. Community contributions via pull requests are also very welcome.
 
 ## Installation
 
@@ -177,6 +259,38 @@ Which countries are leading research in climate change mitigation?
 
 The assistant will use `analyze_geographic_distribution` to map research activity by country.
 
+### Example 7: Top-Journal Citation Search
+
+```
+Find influential papers on "large language models" published in UTD24 journals since 2020
+```
+
+The assistant will use `search_in_journal_list` with `journal_list="utd24"` and `from_year=2020`.
+
+### Example 8: Institution-Filtered Search
+
+```
+Find papers on supply chain resilience published by researchers at Harvard, Stanford, or MIT
+```
+
+The assistant will use `search_works` with `institution_group="harvard_stanford_mit"`.
+
+### Example 9: Seminal Paper Discovery
+
+```
+What are the must-cite foundational papers in transformer models?
+```
+
+The assistant will use `find_seminal_papers` with `min_citations=500` to find highly-cited, older foundational works.
+
+### Example 10: Expert Discovery
+
+```
+Who are the top researchers in reinforcement learning, and where are they based?
+```
+
+The assistant will use `search_authors_by_expertise` with `topic="reinforcement learning"`, sorted by h-index.
+
 ## Response Format
 
 The MCP server uses a **two-tier response system** to balance performance and completeness:
@@ -238,10 +352,14 @@ When you need **complete information** about a specific paper, use the `get_work
 Most search tools support these common parameters:
 
 - **from_year / to_year**: Filter by publication year range
-- **cited_by_count**: Filter by citation count (e.g., ">100")
+- **min_citations**: Minimum citation count (e.g., `50` for solid papers, `200` for highly influential)
+- **cited_by_count**: Citation filter with operator (e.g., `">100"`) — prefer `min_citations` for simplicity
+- **source_name / source_issn / source_id**: Filter by journal or conference
+- **author_institution**: Filter by author institution name (pipe-separated for OR, e.g., `"Harvard University|MIT"`)
+- **institution_group**: Named institution group preset (e.g., `harvard_stanford_mit`)
 - **is_oa**: Filter for open access works only
-- **sort**: Sort results (relevance_score, cited_by_count, publication_year)
-- **page / per_page**: Pagination (max 200 per page)
+- **sort**: Sort results (`relevance_score`, `cited_by_count:desc`, `publication_year:desc`)
+- **page / per_page**: Pagination (max 200 per page; default 10, use 20 for broader coverage)
 
 ### Boolean Search
 

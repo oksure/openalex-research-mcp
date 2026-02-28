@@ -4,7 +4,13 @@ export const searchWorksSchema = z.object({
   query: z.string().optional(),
   from_publication_year: z.number().positive().optional(),
   to_publication_year: z.number().positive().optional(),
+  min_citations: z.number().nonnegative().optional(),
   cited_by_count: z.string().optional(),
+  source_name: z.string().optional(),
+  source_id: z.string().optional(),
+  source_issn: z.string().optional(),
+  author_institution: z.string().optional(),
+  institution_group: z.string().optional(),
   is_oa: z.boolean().optional(),
   type: z.string().optional(),
   sort: z.string().optional(),
@@ -58,6 +64,9 @@ export const getTopCitedWorksSchema = z.object({
   from_year: z.number().positive().optional(),
   to_year: z.number().positive().optional(),
   min_citations: z.number().positive().optional(),
+  source_name: z.string().optional(),
+  source_issn: z.string().optional(),
+  source_id: z.string().optional(),
   per_page: z.number().positive().max(200).optional(),
 });
 
@@ -66,6 +75,7 @@ export const searchAuthorsSchema = z.object({
   works_count: z.string().optional(),
   cited_by_count: z.string().optional(),
   institution: z.string().optional(),
+  sort: z.string().optional(),
   per_page: z.number().positive().max(200).optional(),
 });
 
