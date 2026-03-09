@@ -2,6 +2,19 @@
 
 All notable changes to the OpenAlex MCP Server will be documented in this file.
 
+## [0.4.0] - 2026-03-09
+
+### Added
+- **`openalex-research-mcp setup`**: Interactive guided setup wizard that auto-detects the Claude Desktop config path, prompts for email and optional API key (hidden input), merges the MCP server entry without disturbing other servers, and runs a connectivity check. Supports `--print`, `--config-path`, `--email`, and `--api-key` flags for non-interactive/scripting use.
+
+### Fixed
+- **Sort parameter 400 errors**: Bare sort values (e.g. `relevance_score`, `cited_by_count`) now automatically get `:desc` appended, fixing HTTP 400 errors from the OpenAlex API. Existing suffixed values like `publication_year:asc` are passed through unchanged. (Thanks @RobertKoval, PR #3)
+- **DOI / URL lookup 404 errors**: `get_work` (and any tool using `getEntity`) now normalises IDs before use: bare DOIs (e.g. `10.48550/arXiv.2403.13093`) are prefixed with `doi:`, and full URLs (e.g. `https://doi.org/…`) are percent-encoded so axios does not treat them as absolute URLs. (Thanks @RobertKoval, PR #4)
+
+### Other
+- Enabled vitest unit test suite (`npm test` now runs `vitest run`); added `include: ['tests/**/*.test.ts']` to vitest config to avoid picking up pre-compiled `.js` artifacts.
+- Added unit test suites `tests/sort-fix.test.ts` and `tests/id-normalization.test.ts`.
+
 ## [0.3.0] - 2026-03-01
 
 ### Added
