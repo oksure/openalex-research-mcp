@@ -11,6 +11,15 @@ import { OpenAlexClient, FilterOptions, SearchOptions } from './openalex-client.
 import { z } from 'zod';
 import { CONFIG } from './config.js';
 import { validateInput } from './validation.js';
+import { runSetup } from './setup.js';
+
+// Handle `openalex-research-mcp setup [flags]` before starting the MCP server
+if (process.argv[2] === 'setup') {
+  runSetup(process.argv.slice(3)).then(() => process.exit(0)).catch(err => {
+    console.error('Setup failed:', err.message);
+    process.exit(1);
+  });
+} else {
 
 // Debug logging
 console.error('OpenAlex MCP Server starting...');
@@ -2479,3 +2488,4 @@ main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
+}

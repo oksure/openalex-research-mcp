@@ -2,6 +2,19 @@
 
 A Model Context Protocol (MCP) server that provides access to OpenAlex, a comprehensive open catalog of scholarly papers, authors, institutions, and more. Designed to empower AI assistants to conduct literature reviews, analyze research trends, and map the scholarly landscape.
 
+## Quick Install
+
+```bash
+npx openalex-research-mcp setup
+```
+
+This auto-detects your Claude Desktop config, prompts for your email and optional API key, writes the config, and verifies connectivity — all in one step. Restart Claude Desktop when done.
+
+**Flags:**
+- `--print` — print the config JSON without writing anything
+- `--config-path` — print the detected config file path and exit
+- `--email you@example.com --api-key YOUR_KEY` — non-interactive / scripted mode
+
 **Features:**
 - ⚡️ **In-memory caching** with TTL for fast repeated requests
 - 🔄 **Retry logic** with exponential backoff for resilient API calls
