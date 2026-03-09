@@ -441,7 +441,28 @@ MIT
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues or pull requests.
+Contributions are welcome! Here's how to get involved:
+
+### Reporting bugs
+
+- Search [existing issues](https://github.com/oksure/openalex-research-mcp/issues) before opening a new one.
+- Include a clear description of what you expected vs. what happened.
+- If the bug involves an API call, paste the relevant curl command or error message so it can be reproduced quickly (see the [OpenAlex API docs](https://docs.openalex.org) for reference).
+
+### Requesting features
+
+- Open an issue with the `enhancement` label.
+- Describe the use case and, if possible, sketch the desired tool name, input parameters, and example output.
+
+### Submitting pull requests
+
+1. **Fork** the repo and create a branch from `master` (e.g. `fix/my-bug` or `feat/my-feature`).
+2. **Make your changes** following the patterns in [CLAUDE.md](CLAUDE.md) (two-layer architecture, `summarizeWork` for list results, `getFullWorkDetails` for single-work lookups, etc.).
+3. **Add tests** — run `npm test` (vitest) to make sure all 26+ existing tests still pass, and add new tests in `tests/` for any new behaviour.
+4. **Build** with `npm run build` to confirm there are no TypeScript errors.
+5. **Open a PR** against `master` with a clear description of the problem and fix, including any curl-level reproduction steps for API-related bugs.
+
+> **Note on API quirks:** Before adding new filter logic, check the "OpenAlex API Quirks & Common Bugs" section in [CLAUDE.md](CLAUDE.md) — several non-obvious behaviours (date filters, sort suffixes, DOI encoding) are documented there.
 
 ## Resources
 
