@@ -310,7 +310,7 @@ const VENUE_PRESETS: Record<string, {
       '0028-0836', // Nature
       '0036-8075', // Science
       '1745-2473', // Nature Physics
-      '1745-2481', // Nature Chemistry (wait, Nature Chemistry is 1755-4330)
+      '1745-2481', // Nature Materials
       '2041-1723', // Nature Communications
       '1755-4330', // Nature Chemistry
       '1087-0156', // Nature Biotechnology
@@ -1474,7 +1474,7 @@ const tools: Tool[] = [
 const server = new Server(
   {
     name: 'openalex-mcp',
-    version: '0.3.0',
+    version: '0.4.0',
   },
   {
     capabilities: {
@@ -1611,18 +1611,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const work = await openAlexClient.getWork(params.id);
         const relatedIds = work.related_works || [];
 
-        // Fetch related works
-        const relatedWorks = [];
+        // Fetch related works in parallel
         const limit = Math.min(params.per_page || DEFAULT_PAGE_SIZE, relatedIds.length);
-        for (let i = 0; i < limit; i++) {
-          try {
-            const relatedWork = await openAlexClient.getWork(relatedIds[i]);
-            relatedWorks.push(summarizeWork(relatedWork));
-          } catch (error) {
-            // Skip if work not found
-            continue;
-          }
-        }
+        const relatedResults = await Promise.allSettled(
+          relatedIds.slice(0, limit).map((id: string) => openAlexClient.getWork(id))
+        );
+        const relatedWorks = relatedResults
+          .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+          .map(r => summarizeWork(r.value));
 
         return {
           content: [
@@ -1948,7 +1944,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const fromYear = currentYear - yearsBack;
 
         const filter: FilterOptions = {
-          'from_publication_date': fromYear,
+          'publication_year': `>${fromYear - 1}`,
         };
 
         const options: SearchOptions = {
@@ -2088,8 +2084,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           // Journals: filter by ISSN (reliable, exact match with OR)
           filter['primary_location.source.issn'] = preset.issns.join('|');
         } else if (preset.source_names && preset.source_names.length > 0) {
-          // Conferences: filter by display_name (OR across full names)
-          filter['primary_location.source.display_name'] = preset.source_names.join('|');
+          // Conferences: filter by display_name search (fuzzy match for long names)
+          filter['primary_location.source.display_name.search'] = preset.source_names.join('|');
         }
 
         // ── Institution filter ────────────────────────────────────────────
@@ -2207,10 +2203,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (params.venue_id) {
           venueData = await openAlexClient.getEntity('sources', params.venue_id);
         } else {
-          const searchQuery = params.venue_issn
-            ? `issn:${params.venue_issn}`
-            : params.venue_name;
-
           const filter: FilterOptions = params.venue_issn
             ? { 'issn': params.venue_issn }
             : {};
@@ -2362,16 +2354,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'batch_resolve_references': {
         const ids: string[] = (params.ids || []).slice(0, 20);
-        const resolved = [];
-
-        for (const id of ids) {
-          try {
-            const work = await openAlexClient.getWork(id);
-            resolved.push(summarizeWork(work));
-          } catch (err) {
-            resolved.push({ id, error: 'Not found or invalid ID' });
-          }
-        }
+        const results = await Promise.allSettled(
+          ids.map(id => openAlexClient.getWork(id))
+        );
+        const resolved = results.map((r, i) =>
+          r.status === 'fulfilled'
+            ? summarizeWork(r.value)
+            : { id: ids[i], error: 'Not found or invalid ID' }
+        );
 
         return {
           content: [{
