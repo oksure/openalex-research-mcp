@@ -69,36 +69,52 @@ Which countries are leading research in renewable energy?
 
 ## Available Tools
 
-The server provides 18 specialized tools:
+The server provides 31 specialized tools:
 
-**Literature Search:**
-- `search_works` - Advanced search for papers
-- `get_work` - Get detailed paper information
-- `get_related_works` - Find similar papers
-- `search_by_topic` - Explore specific research domains
-- `autocomplete_search` - Fast typeahead search
+**Literature Search & Discovery:**
+- `search_works` - Advanced search with Boolean operators, venue/institution filters
+- `get_work` - Get complete metadata for a specific work
+- `get_related_works` - Find similar papers based on citations and topics
+- `search_by_topic` - Explore literature in specific research domains
+- `autocomplete_search` - Fast typeahead search for all entity types
+
+**Credibility-Gated Search (Journal & Conference Presets):**
+- `list_journal_presets` - List all available journal/conference and institution group presets
+- `search_in_journal_list` - Search within a named preset (UTD24, FT50, AJG tiers, etc.)
+- `search_works_in_venue` - Search within a specific venue by name, ISSN, or ID
+- `get_top_venues_for_field` - Discover top journals/conferences ranked by h-index
+- `check_venue_quality` - Inspect h-index, impact, and indexing status of any venue
 
 **Citation Analysis:**
-- `get_work_citations` - Who cites this paper
-- `get_work_references` - What this paper cites
-- `get_citation_network` - Complete citation graph
-- `get_top_cited_works` - Most influential papers
+- `get_work_citations` - Forward citation analysis (who cites this work)
+- `get_work_references` - Backward citation analysis (what this work cites)
+- `get_citation_network` - Build citation networks (forward + backward)
+- `get_top_cited_works` - Find the most influential papers in a field
 
-**Author & Institutions:**
-- `search_authors` - Find researchers
-- `get_author_works` - Author's publications
-- `get_author_collaborators` - Co-authorship networks
-- `search_institutions` - Find universities/organizations
+**Author & Institution Analysis:**
+- `search_authors` - Find researchers with h-index and citation metrics
+- `search_authors_by_expertise` - Find experts in a topic ranked by h-index
+- `get_author_profile` - Full profile: h-index, i10-index, top works, recent works
+- `get_author_works` - Analyze an author's publication history
+- `get_author_collaborators` - Map co-authorship networks
+- `search_institutions` - Find academic institutions
 
-**Research Trends:**
-- `analyze_topic_trends` - Track research evolution
-- `compare_research_areas` - Compare different fields
-- `get_trending_topics` - Discover emerging areas
-- `analyze_geographic_distribution` - Global research mapping
+**High-Value Citation Finding:**
+- `find_review_articles` - Find review papers and meta-analyses
+- `find_seminal_papers` - Find foundational "must-cite" papers
+- `find_open_access_version` - Find freely available versions of papers
+- `batch_resolve_references` - Validate up to 20 DOIs/IDs at once
+
+**Research Landscape & Trends:**
+- `analyze_topic_trends` - Track research evolution over time
+- `compare_research_areas` - Compare activity across different fields
+- `get_trending_topics` - Discover emerging research areas
+- `analyze_geographic_distribution` - Map global research activity
 
 **Entity Lookup:**
-- `get_entity` - Get any OpenAlex entity
-- `search_sources` - Find journals/venues
+- `get_entity` - Get any OpenAlex entity (works, authors, sources, etc.)
+- `search_sources` - Find journals/conferences sorted by h-index
+- `health_check` - Verify server and API connectivity
 
 ## Tips
 

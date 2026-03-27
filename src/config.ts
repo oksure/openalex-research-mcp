@@ -1,3 +1,9 @@
+// Debug logging gated on OPENALEX_DEBUG env var (stderr is safe for MCP stdio servers)
+const DEBUG_ENABLED = process.env.OPENALEX_DEBUG === '1' || process.env.OPENALEX_DEBUG === 'true';
+export function debug(...args: unknown[]): void {
+  if (DEBUG_ENABLED) console.error('[openalex]', ...args);
+}
+
 export const CONFIG = {
   API: {
     BASE_URL: 'https://api.openalex.org',
@@ -8,6 +14,7 @@ export const CONFIG = {
     },
     RETRY: {
       MAX_RETRIES: 3,
+      MAX_429_RETRIES: 3,
       INITIAL_DELAY_MS: 1000,
       MAX_DELAY_MS: 10000,
       BACKOFF_FACTOR: 2,

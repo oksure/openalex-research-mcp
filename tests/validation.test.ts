@@ -7,12 +7,12 @@ describe('Validation', () => {
       const { searchWorksSchema } = await import('../src/validation.js');
       const result = validateInput(searchWorksSchema, {
         query: 'machine learning',
-        from_publication_year: 2020,
-        to_publication_year: 2023,
+        from_year: 2020,
+        to_year: 2023,
       }, 'test');
 
       expect(result.query).toBe('machine learning');
-      expect(result.from_publication_year).toBe(2020);
+      expect(result.from_year).toBe(2020);
     });
 
     it('should throw on invalid input', async () => {
@@ -20,7 +20,7 @@ describe('Validation', () => {
 
       expect(() => {
         validateInput(searchWorksSchema, {
-          from_publication_year: 'not a number',
+          from_year: 'not a number',
         }, 'test');
       }).toThrow();
     });

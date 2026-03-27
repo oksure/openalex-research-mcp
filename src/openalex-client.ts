@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import { CONFIG } from './config.js';
+import { CONFIG, debug } from './config.js';
 
 export interface OpenAlexConfig {
   email?: string;
@@ -107,12 +107,23 @@ export class OpenAlexClient {
 
     this.cache = new SimpleCache<any>(CONFIG.CACHE.MAX_SIZE, CONFIG.CACHE.TTL_MS);
 
-    // Add response interceptor for error handling and retry
+    // Add response interceptor for 429 rate-limit handling with bounded retry
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
-        if (error.response?.status === 429) {
-          throw new Error('Rate limit exceeded. Please wait before making more requests.');
+        if (error.response?.status === 429 && error.config) {
+          const config = error.config as any;
+          config._429RetryCount = (config._429RetryCount || 0) + 1;
+          if (config._429RetryCount > CONFIG.API.RETRY.MAX_429_RETRIES) {
+            const err = new Error('Rate limit exceeded after multiple retries. Please wait before making more requests.');
+            (err as any).isRateLimitExhausted = true;
+            throw err;
+          }
+          const retryAfter = parseInt(error.response.headers['retry-after'] || '5', 10);
+          const delayMs = Math.min(retryAfter * 1000, CONFIG.API.RETRY.MAX_DELAY_MS);
+          debug(`429 rate limited (attempt ${config._429RetryCount}/${CONFIG.API.RETRY.MAX_429_RETRIES}) — sleeping ${delayMs}ms`);
+          await this.sleep(delayMs);
+          return this.client.request(config);
         }
         throw error;
       }
@@ -132,15 +143,26 @@ export class OpenAlexClient {
     for (let attempt = 0; attempt < CONFIG.API.RETRY.MAX_RETRIES; attempt++) {
       try {
         return await fn();
-      } catch (error) {
+      } catch (error: any) {
         lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Don't retry rate-limit exhaustion (already retried by the 429 interceptor)
+        if (error?.isRateLimitExhausted) {
+          throw lastError;
+        }
+
+        // Don't retry non-retryable client errors (4xx except 429, which the interceptor handles)
+        const status = error?.response?.status;
+        if (status && status >= 400 && status < 500 && status !== 429) {
+          throw lastError;
+        }
 
         if (attempt < CONFIG.API.RETRY.MAX_RETRIES - 1) {
           const delay = Math.min(
             CONFIG.API.RETRY.INITIAL_DELAY_MS * Math.pow(CONFIG.API.RETRY.BACKOFF_FACTOR, attempt),
             CONFIG.API.RETRY.MAX_DELAY_MS
           );
-          console.error(`${context}: Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+          debug(`${context}: Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
           await this.sleep(delay);
         }
       }
@@ -283,12 +305,8 @@ export class OpenAlexClient {
     }
 
     const result = await this.retryWithBackoff(async () => {
-      console.error('SearchEntities called:');
-      console.error('  Entity type:', entityType);
-      console.error('  Options:', JSON.stringify(options, null, 2));
-      console.error('  Query params:', JSON.stringify(params, null, 2));
+      debug('searchEntities', entityType, JSON.stringify(params));
       const response = await this.client.get(`/${entityType}`, { params });
-      console.error('  Response status:', response.status);
       return response.data;
     }, `searchEntities(${entityType})`);
 

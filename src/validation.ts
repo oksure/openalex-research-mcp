@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 export const searchWorksSchema = z.object({
   query: z.string().optional(),
-  from_publication_year: z.number().positive().optional(),
-  to_publication_year: z.number().positive().optional(),
+  from_year: z.number().positive().optional(),
+  to_year: z.number().positive().optional(),
   min_citations: z.number().nonnegative().optional(),
   cited_by_count: z.string().optional(),
   source_name: z.string().optional(),
@@ -53,7 +53,6 @@ export const getWorkReferencesSchema = z.object({
 
 export const getCitationNetworkSchema = z.object({
   id: z.string().min(1),
-  depth: z.number().positive().max(2).optional(),
   max_citing: z.number().positive().optional(),
   max_references: z.number().positive().optional(),
 });

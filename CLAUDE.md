@@ -4,25 +4,29 @@ This file provides guidance for AI assistants (particularly Claude Code) when wo
 
 ## Project Overview
 
-An MCP (Model Context Protocol) server providing access to the OpenAlex API for literature review and research landscaping. Exposes 18 specialized tools through the MCP protocol, enabling AI assistants to search 240+ million scholarly works, analyze citations, track research trends, and map collaboration networks.
+An MCP (Model Context Protocol) server providing access to the OpenAlex API for literature review and research landscaping. Exposes 31 specialized tools through the MCP protocol, enabling AI assistants to search 240+ million scholarly works, analyze citations, track research trends, and map collaboration networks.
 
 ## Architecture
 
-### Two-Layer Design
+### Module Structure
 
 1. **OpenAlex Client Layer** (`src/openalex-client.ts`)
    - Handles HTTP communication with OpenAlex API (api.openalex.org)
-   - Manages rate limiting (10 req/s, 100K req/day) and 429 error handling
+   - Manages rate limiting (10 req/s, 100K req/day) and 429 error handling with bounded retry
    - Implements "polite pool" access via email parameter or API key
-   - Provides typed interfaces for search/filter operations
    - Key methods: `getEntity()`, `searchEntities()`, `autocomplete()`, `getWorks()`, `getAuthors()`, etc.
 
 2. **MCP Server Layer** (`src/index.ts`)
    - Implements stdio transport for MCP protocol
-   - Defines 18 tools organized into 5 categories (see README for tool list)
-   - Translates MCP parameters to OpenAlexClient calls
-   - Uses helper function `buildFilter()` to map common params to OpenAlex filter format
-   - Returns JSON responses via MCP content blocks
+   - Defines 31 tools organized into 7 categories (see README for tool list)
+   - Contains tool handler switch block
+
+3. **Supporting Modules**
+   - `src/presets.ts` — VENUE_PRESETS (9 journal/conference lists) and INSTITUTION_GROUPS (7 presets)
+   - `src/formatters.ts` — Response formatting: `summarizeWork()`, `getFullWorkDetails()`, `reconstructAbstract()`, etc.
+   - `src/filter.ts` — `buildFilter()` maps MCP tool params to OpenAlex filter format (exported for testing)
+   - `src/config.ts` — Configuration constants and `debug()` helper (gated on `OPENALEX_DEBUG`)
+   - `src/validation.ts` — Zod schemas for input validation
 
 ### Key Design Patterns
 
@@ -41,17 +45,22 @@ An MCP (Model Context Protocol) server providing access to the OpenAlex API for 
   - Use this when detailed author information is needed (e.g., identifying PIs, corresponding authors)
 
 #### Parameter Translation
-Tool parameters (e.g., `from_publication_year`) are mapped to OpenAlex API filter format (e.g., `publication_year:>2019`) in the `buildFilter()` helper.
+Tool parameters (e.g., `from_year`) are mapped to OpenAlex API filter format (e.g., `publication_year:>2019`) in the `buildFilter()` helper.
 
 **CRITICAL**: OpenAlex uses `publication_year` filter, NOT `from_publication_date`
 - Year ranges: `publication_year:2020-2023`
 - From year: `publication_year:>2019` (note: use year-1 to be inclusive)
 - To year: `publication_year:<2025`
 
+#### Naming Conventions: `venue_*` vs `source_*`
+- **`source_*` parameters** (`source_name`, `source_issn`, `source_id`) are used in generic search tools (`search_works`, `get_top_cited_works`, `find_review_articles`, etc.) where the venue filter is one of many optional filters.
+- **`venue_*` parameters** (`venue_name`, `venue_issn`, `venue_id`) are used in venue-specific tools (`search_works_in_venue`, `check_venue_quality`) where the venue is the primary subject of the query.
+- Both map to the same OpenAlex `primary_location.source.*` filters under the hood.
+
 #### Other Patterns
 - **Type Assertion**: Uses `const params = args as any` to handle MCP's unknown argument types
 - **Citation Networks**: `get_citation_network` combines forward citations (via filter `cites:id`) and backward citations (from `referenced_works` field)
-- **Collaborator Analysis**: `get_author_collaborators` fetches author's works, then counts co-author occurrences across all authorships
+- **Collaborator Analysis**: `get_author_collaborators` paginates through author's works (up to 1000), then counts co-author occurrences across all authorships
 
 ## Development Commands
 
@@ -251,6 +260,7 @@ Example queries:
 - `OPENALEX_EMAIL`: Email for polite pool (better rate limits)
 - `OPENALEX_API_KEY`: Premium API key (optional)
 - `MCP_DEFAULT_PAGE_SIZE`: Default number of results per page (default: 10). Set to a lower value (e.g., 5) if experiencing context overflow errors in MCP clients.
+- `OPENALEX_DEBUG`: Set to `1` or `true` to enable verbose debug logging to stderr. Off by default in production.
 
 All are automatically picked up by the server on startup.
 

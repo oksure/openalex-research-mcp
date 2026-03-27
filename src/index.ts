@@ -9,9 +9,15 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { OpenAlexClient, FilterOptions, SearchOptions } from './openalex-client.js';
 import { z } from 'zod';
-import { CONFIG } from './config.js';
+import { CONFIG, debug } from './config.js';
 import { validateInput } from './validation.js';
 import { runSetup } from './setup.js';
+import { VENUE_PRESETS, INSTITUTION_GROUPS } from './presets.js';
+import {
+  summarizeWork, summarizeAuthor, summarizeSource,
+  summarizeWorksList, getFullWorkDetails, reconstructAbstract,
+} from './formatters.js';
+import { buildFilter } from './filter.js';
 
 // Handle `openalex-research-mcp setup [flags]` before starting the MCP server
 if (process.argv[2] === 'setup') {
@@ -21,588 +27,15 @@ if (process.argv[2] === 'setup') {
   });
 } else {
 
-// Debug logging
-console.error('OpenAlex MCP Server starting...');
-console.error('Email:', process.env.OPENALEX_EMAIL);
-console.error('API Key:', process.env.OPENALEX_API_KEY ? 'Set' : 'Not set');
+debug('Server starting...');
+debug('Email:', process.env.OPENALEX_EMAIL);
+debug('API Key:', process.env.OPENALEX_API_KEY ? 'Set' : 'Not set');
 
 // Initialize OpenAlex client
 const openAlexClient = new OpenAlexClient();
 
 // Default page size for MCP clients (can be overridden with MCP_DEFAULT_PAGE_SIZE env var)
 const DEFAULT_PAGE_SIZE = parseInt(process.env.MCP_DEFAULT_PAGE_SIZE || String(CONFIG.MCP.DEFAULT_PAGE_SIZE), 10);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// VENUE PRESETS — curated journal & conference lists by academic ranking system
-// ISSNs are used for journals (exact matches via | OR filter in OpenAlex).
-// source_names are used for conferences (display_name OR filter).
-// These lists match the official rankings as of 2025/2026.
-// ─────────────────────────────────────────────────────────────────────────────
-const VENUE_PRESETS: Record<string, {
-  name: string;
-  description: string;
-  issns?: string[];
-  source_names?: string[];
-  note?: string;
-}> = {
-
-  // ── UT Dallas 24 (UTD) ─────────────────────────────────────────────────────
-  // Official list maintained by UT Dallas Jindal School of Management.
-  // Used for ranking business school research productivity worldwide.
-  'utd24': {
-    name: 'UT Dallas 24 (UTD)',
-    description: 'Official UT Dallas journal list used for global business school research rankings',
-    issns: [
-      '0001-4826', // The Accounting Review
-      '0001-8392', // Administrative Science Quarterly
-      '0011-7315', // Decision Sciences
-      '1042-2587', // Entrepreneurship Theory and Practice
-      '0090-4848', // Human Resource Management
-      '1047-7047', // Information Systems Research
-      '0165-4101', // Journal of Accounting and Economics
-      '0021-8456', // Journal of Accounting Research
-      '0167-4544', // Journal of Business Ethics
-      '0883-9026', // Journal of Business Venturing
-      '1057-7408', // Journal of Consumer Psychology
-      '0093-5301', // Journal of Consumer Research
-      '0022-1082', // Journal of Finance
-      '0022-1090', // Journal of Financial and Quantitative Analysis
-      '0304-405X', // Journal of Financial Economics
-      '0047-2506', // Journal of International Business Studies
-      '0149-2063', // Journal of Management
-      '0742-1222', // Journal of Management Information Systems
-      '0022-2380', // Journal of Management Studies
-      '0022-2429', // Journal of Marketing
-      '0022-2437', // Journal of Marketing Research
-      '0272-6963', // Journal of Operations Management
-      '0022-3808', // Journal of Political Economy
-      '0022-4359', // Journal of Retailing
-      '0276-7783', // MIS Quarterly
-      '0025-1909', // Management Science
-      '1523-4614', // Manufacturing and Service Operations Management (M&SOM)
-      '0732-2399', // Marketing Science
-      '0030-364X', // Operations Research
-      '1047-7039', // Organization Science
-      '1059-1478', // Production and Operations Management
-      '1380-6653', // Review of Accounting Studies
-      '0893-9454', // Review of Financial Studies
-      '0143-2095', // Strategic Management Journal
-    ],
-  },
-
-  // ── Financial Times 50 (FT50) ──────────────────────────────────────────────
-  // Used by the Financial Times in their global MBA and business school rankings.
-  'ft50': {
-    name: 'FT50 Journals',
-    description: 'Financial Times 50 journals — used for FT global MBA/business school rankings',
-    issns: [
-      '0001-4826', // The Accounting Review
-      '0361-3682', // Accounting, Organizations and Society
-      '0001-8392', // Administrative Science Quarterly
-      '0002-8282', // American Economic Review
-      '0823-9150', // Contemporary Accounting Research
-      '0011-7315', // Decision Sciences
-      '0012-9682', // Econometrica
-      '1042-2587', // Entrepreneurship Theory and Practice
-      '0018-7267', // Human Relations
-      '0090-4848', // Human Resource Management
-      '1047-7047', // Information Systems Research
-      '0165-4101', // Journal of Accounting and Economics
-      '0021-8456', // Journal of Accounting Research
-      '0021-9010', // Journal of Applied Psychology
-      '0167-4544', // Journal of Business Ethics
-      '0883-9026', // Journal of Business Venturing
-      '1057-7408', // Journal of Consumer Psychology
-      '0093-5301', // Journal of Consumer Research
-      '1058-6407', // Journal of Economics and Management Strategy
-      '0022-1082', // Journal of Finance
-      '0022-1090', // Journal of Financial and Quantitative Analysis
-      '0304-405X', // Journal of Financial Economics
-      '0047-2506', // Journal of International Business Studies
-      '0149-2063', // Journal of Management
-      '0742-1222', // Journal of Management Information Systems
-      '0022-2380', // Journal of Management Studies
-      '0022-2429', // Journal of Marketing
-      '0022-2437', // Journal of Marketing Research
-      '0272-6963', // Journal of Operations Management
-      '0022-3808', // Journal of Political Economy
-      '0022-4359', // Journal of Retailing
-      '0092-0703', // Journal of the Academy of Marketing Science
-      '0276-7783', // MIS Quarterly
-      '0025-1909', // Management Science
-      '1523-4614', // Manufacturing and Service Operations Management (M&SOM)
-      '0732-2399', // Marketing Science
-      '0030-364X', // Operations Research
-      '1047-7039', // Organization Science
-      '0170-8406', // Organization Studies
-      '1059-1478', // Production and Operations Management
-      '0033-5533', // Quarterly Journal of Economics
-      '0741-6261', // Rand Journal of Economics
-      '0048-7333', // Research Policy
-      '1380-6653', // Review of Accounting Studies
-      '0034-6527', // Review of Economic Studies
-      '1572-3097', // Review of Finance
-      '0893-9454', // Review of Financial Studies
-      '1532-9194', // Sloan Management Review (MIT SMR)
-      '0143-2095', // Strategic Management Journal
-      '0734-306X', // Journal of Labor Economics
-      '0008-1256', // California Management Review
-    ],
-  },
-
-  // ── AJG / ABS 4* ────────────────────────────────────────────────────────────
-  // Chartered Association of Business Schools (CABS) Academic Journal Guide.
-  // 4* = "World Elite" — the very top journals every field considers flagship.
-  'abs4star': {
-    name: 'AJG/ABS 4* (World Elite)',
-    description: 'Chartered ABS Academic Journal Guide 4* — world elite journals, the most prestigious tier',
-    issns: [
-      '0001-8392', // Administrative Science Quarterly
-      '0002-8282', // American Economic Review
-      '0012-9682', // Econometrica
-      '0021-9010', // Journal of Applied Psychology
-      '1057-7408', // Journal of Consumer Psychology
-      '0093-5301', // Journal of Consumer Research
-      '0022-1082', // Journal of Finance
-      '0304-405X', // Journal of Financial Economics
-      '0149-2063', // Journal of Management
-      '0022-2429', // Journal of Marketing
-      '0276-7783', // MIS Quarterly
-      '0025-1909', // Management Science
-      '0030-364X', // Operations Research
-      '1047-7039', // Organization Science
-      '0022-3808', // Journal of Political Economy
-      '0033-5533', // Quarterly Journal of Economics
-      '0741-6261', // Rand Journal of Economics
-      '0034-6527', // Review of Economic Studies
-      '0893-9454', // Review of Financial Studies
-      '0143-2095', // Strategic Management Journal
-      '0022-2380', // Journal of Management Studies
-      '0047-2506', // Journal of International Business Studies
-      '1047-7047', // Information Systems Research
-      '0165-4101', // Journal of Accounting and Economics
-    ],
-    note: 'Representative 4* journals. The full AJG list covers 100+ categories — add ISSNs for your specific subfield.',
-  },
-
-  // ── AJG / ABS 4 ─────────────────────────────────────────────────────────────
-  // Top international journals — excellent quality, below only the 4* elite.
-  'abs4': {
-    name: 'AJG/ABS 4 (Top International)',
-    description: 'ABS Academic Journal Guide 4 — top international journals, excellent quality',
-    issns: [
-      '0001-4826', // The Accounting Review
-      '0823-9150', // Contemporary Accounting Research
-      '0011-7315', // Decision Sciences
-      '1042-2587', // Entrepreneurship Theory and Practice
-      '0018-7267', // Human Relations
-      '0090-4848', // Human Resource Management
-      '0021-8456', // Journal of Accounting Research
-      '0167-4544', // Journal of Business Ethics
-      '0883-9026', // Journal of Business Venturing
-      '0022-1090', // Journal of Financial and Quantitative Analysis
-      '0742-1222', // Journal of Management Information Systems
-      '0022-2437', // Journal of Marketing Research
-      '0272-6963', // Journal of Operations Management
-      '0022-4359', // Journal of Retailing
-      '1523-4614', // M&SOM
-      '0732-2399', // Marketing Science
-      '0170-8406', // Organization Studies
-      '1059-1478', // Production and Operations Management
-      '0048-7333', // Research Policy
-      '1380-6653', // Review of Accounting Studies
-      '1572-3097', // Review of Finance
-      '0165-4101', // Journal of Accounting and Economics
-      '0092-0703', // Journal of the Academy of Marketing Science
-      '1058-6407', // Journal of Economics and Management Strategy
-      '0361-3682', // Accounting, Organizations and Society
-      '0734-306X', // Journal of Labor Economics
-    ],
-    note: 'Representative AJG 4 journals. The full AJG list covers 100+ categories.',
-  },
-
-  // ── AJG / ABS 3 ─────────────────────────────────────────────────────────────
-  // Internationally recognised journals — strong quality, good citation impact.
-  'abs3': {
-    name: 'AJG/ABS 3 (Internationally Recognised)',
-    description: 'ABS Academic Journal Guide 3 — internationally recognised, solid quality journals',
-    issns: [
-      '0008-1256', // California Management Review
-      '1532-9194', // Sloan Management Review (MIT SMR)
-      '0017-8012', // Harvard Business Review
-      '0022-2399', // Journal of Retailing and Consumer Services
-      '1462-8732', // Strategic Organization
-      '0925-5273', // International Journal of Production Economics
-      '0969-7012', // British Journal of Management
-      '0263-2373', // European Journal of Operational Research (some rate this higher)
-      '0305-0483', // Omega
-      '1366-4387', // Venture Capital
-      '0148-2963', // Journal of Business Research
-      '1059-1478', // Production and Operations Management (some rate 4)
-      '0020-7543', // International Journal of Production Research
-      '1757-5818', // Journal of Supply Chain Management
-    ],
-    note: 'Representative AJG 3 journals. The AJG 3 tier has 500+ journals — these are key examples across business disciplines.',
-  },
-
-  // ── Management Science + Operations Journals ────────────────────────────────
-  // Specific combo often used in business analytics / operations research
-  'ms_misq_ops': {
-    name: 'Management Science + IS + Operations Core',
-    description: 'Management Science, M&SOM, MIS Quarterly, ISR, JMIS, Operations Research, POM — the core quant-methods journals in business',
-    issns: [
-      '0025-1909', // Management Science
-      '1523-4614', // Manufacturing and Service Operations Management (M&SOM)
-      '0276-7783', // MIS Quarterly
-      '1047-7047', // Information Systems Research
-      '0742-1222', // Journal of Management Information Systems
-      '0030-364X', // Operations Research
-      '1059-1478', // Production and Operations Management
-      '0272-6963', // Journal of Operations Management
-      '0732-2399', // Marketing Science
-    ],
-  },
-
-  // ── Top AI Conferences ──────────────────────────────────────────────────────
-  // Used by ML/AI researchers — these proceedings are where the field moves.
-  'top_ai_conferences': {
-    name: 'Top AI Conferences',
-    description: 'Leading AI/ML conference proceedings: NeurIPS, ICML, ICLR, AAAI, CVPR, ICCV, ECCV, ACL, EMNLP, KDD, IJCAI',
-    source_names: [
-      'Advances in Neural Information Processing Systems',   // NeurIPS
-      'International Conference on Machine Learning',        // ICML
-      'International Conference on Learning Representations',// ICLR
-      'Proceedings of the AAAI Conference on Artificial Intelligence', // AAAI
-      'IEEE/CVF Conference on Computer Vision and Pattern Recognition', // CVPR
-      'International Conference on Computer Vision',         // ICCV
-      'European Conference on Computer Vision',              // ECCV
-      'Proceedings of the Annual Meeting of the Association for Computational Linguistics', // ACL
-      'Proceedings of the Conference on Empirical Methods in Natural Language Processing',  // EMNLP
-      'Proceedings of the ACM SIGKDD Conference on Knowledge Discovery and Data Mining',    // KDD
-      'International Joint Conference on Artificial Intelligence', // IJCAI
-      'The Web Conference',                                   // WWW
-    ],
-    note: 'Conference names match OpenAlex display_name. If a conference is missing, look it up via search_sources.',
-  },
-
-  // ── Top CS/Systems Conferences ─────────────────────────────────────────────
-  'top_cs_conferences': {
-    name: 'Top CS Systems & HCI Conferences',
-    description: 'Top systems, HCI, and networking conferences: SOSP, OSDI, SIGCOMM, CHI, UIST, VLDB, SIGMOD, PLDI, POPL',
-    source_names: [
-      'Symposium on Operating Systems Principles',
-      'USENIX Symposium on Operating Systems Design and Implementation',
-      'ACM SIGCOMM Conference',
-      'Proceedings of the ACM CHI Conference on Human Factors in Computing Systems',
-      'UIST',
-      'Proceedings of the VLDB Endowment',
-      'International Conference on Management of Data',
-      'Programming Language Design and Implementation',
-      'Principles of Programming Languages',
-    ],
-  },
-
-  // ── Nature / Science family ─────────────────────────────────────────────────
-  'nature_science': {
-    name: 'Nature & Science Family',
-    description: 'Nature, Science, and their branded sub-journals — highest prestige multidisciplinary outlets',
-    issns: [
-      '0028-0836', // Nature
-      '0036-8075', // Science
-      '1745-2473', // Nature Physics
-      '1745-2481', // Nature Materials
-      '2041-1723', // Nature Communications
-      '1755-4330', // Nature Chemistry
-      '1087-0156', // Nature Biotechnology
-      '1548-7091', // Nature Methods
-      '1476-4687', // Nature (online)
-      '2052-4463', // Scientific Data
-    ],
-    note: 'Core Nature/Science family. Sub-journal ISSNs vary — verify via check_venue_quality for specific sub-journals.',
-  },
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// INSTITUTION GROUPS — named presets for filtering by author affiliation.
-// Institution names match OpenAlex display_name (case-insensitive exact match).
-// Use | separator for OR across multiple institutions in one API call.
-// ─────────────────────────────────────────────────────────────────────────────
-const INSTITUTION_GROUPS: Record<string, {
-  name: string;
-  description: string;
-  institutions: string[];
-}> = {
-  'harvard_stanford_mit': {
-    name: 'Harvard / Stanford / MIT',
-    description: 'Big Three US research universities',
-    institutions: ['Harvard University', 'Stanford University', 'Massachusetts Institute of Technology'],
-  },
-  'ivy_league': {
-    name: 'Ivy League',
-    description: 'All eight Ivy League universities',
-    institutions: [
-      'Harvard University', 'Yale University', 'Princeton University',
-      'Columbia University', 'University of Pennsylvania', 'Brown University',
-      'Dartmouth College', 'Cornell University',
-    ],
-  },
-  'top_us': {
-    name: 'Top US Research Universities',
-    description: 'Top 10 US research universities by research output',
-    institutions: [
-      'Harvard University', 'Stanford University', 'Massachusetts Institute of Technology',
-      'University of California, Berkeley', 'California Institute of Technology',
-      'University of Chicago', 'Princeton University', 'Yale University',
-      'Columbia University', 'University of Pennsylvania',
-    ],
-  },
-  'top_us_business': {
-    name: 'Top US Business Schools',
-    description: 'Harvard, Stanford, Wharton, Booth, Kellogg, Sloan, Columbia, Stern, Darden, Tuck',
-    institutions: [
-      'Harvard University', 'Stanford University', 'University of Pennsylvania',
-      'University of Chicago', 'Northwestern University', 'Massachusetts Institute of Technology',
-      'Columbia University', 'New York University', 'University of Virginia',
-      'Dartmouth College',
-    ],
-  },
-  'insead_london': {
-    name: 'INSEAD + London Schools',
-    description: 'INSEAD, London Business School, Imperial, LSE, Oxford, Cambridge',
-    institutions: [
-      'INSEAD', 'London Business School', 'Imperial College London',
-      'London School of Economics and Political Science', 'University of Oxford',
-      'University of Cambridge',
-    ],
-  },
-  'top_global_business': {
-    name: 'Top Global Business Schools',
-    description: 'Elite global business schools for management research',
-    institutions: [
-      'Harvard University', 'Stanford University', 'University of Pennsylvania',
-      'INSEAD', 'London Business School', 'University of Chicago',
-      'Massachusetts Institute of Technology', 'Northwestern University',
-      'Columbia University', 'University of Oxford', 'University of Cambridge',
-    ],
-  },
-  'top_china': {
-    name: 'Top Chinese Universities',
-    description: 'Peking University, Tsinghua, Fudan, Shanghai Jiao Tong, ZJU, CUHK',
-    institutions: [
-      'Peking University', 'Tsinghua University', 'Fudan University',
-      'Shanghai Jiao Tong University', 'Zhejiang University',
-      'Chinese University of Hong Kong', 'University of Hong Kong',
-    ],
-  },
-};
-
-// Helper function to filter work data to essential fields only (reduces context usage)
-function summarizeWork(work: any) {
-  return {
-    id: work.id,
-    doi: work.doi,
-    title: work.title || work.display_name,
-    publication_year: work.publication_year,
-    publication_date: work.publication_date,
-    cited_by_count: work.cited_by_count,
-    type: work.type,
-    // Only first 5 authors to avoid huge lists
-    authors: work.authorships?.slice(0, 5).map((a: any) => ({
-      name: a.author?.display_name,
-      institutions: a.institutions?.slice(0, 2).map((i: any) => i.display_name)
-    })) || [],
-    authors_truncated: work.authorships?.length > 5,
-    // Primary topic only
-    primary_topic: work.primary_topic ? {
-      display_name: work.primary_topic.display_name,
-      field: work.primary_topic.field?.display_name,
-      subfield: work.primary_topic.subfield?.display_name
-    } : null,
-    // Open access info
-    open_access: {
-      is_oa: work.open_access?.is_oa,
-      oa_status: work.open_access?.oa_status,
-      oa_url: work.open_access?.oa_url
-    },
-    // Key URLs
-    landing_page_url: work.primary_location?.landing_page_url,
-    pdf_url: work.best_oa_location?.pdf_url,
-    // Source (journal/venue) with quality identifiers
-    source: work.primary_location?.source?.display_name,
-    source_id: work.primary_location?.source?.id,
-    source_issn_l: work.primary_location?.source?.issn_l,
-    source_type: work.primary_location?.source?.type,
-    // Field-Weighted Citation Impact (quality signal)
-    fwci: work.fwci ?? null,
-    // Abstract (properly reconstructed, capped at 600 chars)
-    abstract: work.abstract_inverted_index ?
-      reconstructAbstract(work.abstract_inverted_index).substring(0, 600) : null
-  };
-}
-
-// Helper function to summarize an author record (includes h-index and affiliations)
-function summarizeAuthor(author: any) {
-  return {
-    id: author.id,
-    name: author.display_name,
-    orcid: author.orcid,
-    works_count: author.works_count,
-    cited_by_count: author.cited_by_count,
-    h_index: author.summary_stats?.h_index ?? null,
-    i10_index: author.summary_stats?.i10_index ?? null,
-    two_year_mean_citedness: author.summary_stats?.['2yr_mean_citedness'] ?? null,
-    last_known_institutions: author.last_known_institutions?.slice(0, 2).map((i: any) => ({
-      display_name: i.display_name,
-      country_code: i.country_code,
-      type: i.type
-    })) || [],
-    top_topics: author.topics?.slice(0, 4).map((t: any) => ({
-      name: t.display_name,
-      count: t.count
-    })) || []
-  };
-}
-
-// Helper function to summarize a source/venue record
-function summarizeSource(source: any) {
-  return {
-    id: source.id,
-    display_name: source.display_name,
-    issn_l: source.issn_l,
-    issn: source.issn,
-    type: source.type,
-    h_index: source.summary_stats?.h_index ?? null,
-    two_year_mean_citedness: source.summary_stats?.['2yr_mean_citedness'] ?? null,
-    works_count: source.works_count,
-    cited_by_count: source.cited_by_count,
-    is_oa: source.is_oa,
-    is_in_doaj: source.is_in_doaj,
-    homepage_url: source.homepage_url,
-    host_organization: source.host_organization_name,
-    topics: source.topics?.slice(0, 4).map((t: any) => t.display_name) || []
-  };
-}
-
-// Helper function to filter response data
-function summarizeWorksList(response: any) {
-  return {
-    meta: {
-      count: response.meta?.count,
-      page: response.meta?.page,
-      per_page: response.meta?.per_page
-    },
-    results: response.results?.map(summarizeWork) || []
-  };
-}
-
-// Helper function to return full work details (for get_work tool)
-function getFullWorkDetails(work: any) {
-  return {
-    id: work.id,
-    doi: work.doi,
-    title: work.title || work.display_name,
-    publication_year: work.publication_year,
-    publication_date: work.publication_date,
-    cited_by_count: work.cited_by_count,
-    type: work.type,
-    // ALL authors with full details
-    authors: work.authorships?.map((a: any, index: number) => ({
-      position: index === 0 ? 'first' : index === work.authorships.length - 1 ? 'last' : 'middle',
-      author_position: a.author_position,
-      name: a.author?.display_name,
-      id: a.author?.id,
-      orcid: a.author?.orcid,
-      institutions: a.institutions?.map((i: any) => ({
-        id: i.id,
-        display_name: i.display_name,
-        ror: i.ror,
-        country_code: i.country_code,
-        type: i.type
-      })) || [],
-      countries: a.countries || [],
-      is_corresponding: a.is_corresponding,
-      raw_affiliation_strings: a.raw_affiliation_strings || []
-    })) || [],
-    // Full topics (not just primary)
-    primary_topic: work.primary_topic ? {
-      id: work.primary_topic.id,
-      display_name: work.primary_topic.display_name,
-      score: work.primary_topic.score,
-      field: work.primary_topic.field?.display_name,
-      subfield: work.primary_topic.subfield?.display_name,
-      domain: work.primary_topic.domain?.display_name
-    } : null,
-    topics: work.topics?.slice(0, 5).map((t: any) => ({
-      id: t.id,
-      display_name: t.display_name,
-      score: t.score
-    })) || [],
-    // Open access info
-    open_access: {
-      is_oa: work.open_access?.is_oa,
-      oa_status: work.open_access?.oa_status,
-      oa_url: work.open_access?.oa_url,
-      any_repository_has_fulltext: work.open_access?.any_repository_has_fulltext
-    },
-    // URLs and locations
-    landing_page_url: work.primary_location?.landing_page_url,
-    pdf_url: work.best_oa_location?.pdf_url,
-    primary_location: work.primary_location ? {
-      is_oa: work.primary_location.is_oa,
-      landing_page_url: work.primary_location.landing_page_url,
-      pdf_url: work.primary_location.pdf_url,
-      source: work.primary_location.source ? {
-        id: work.primary_location.source.id,
-        display_name: work.primary_location.source.display_name,
-        issn_l: work.primary_location.source.issn_l,
-        issn: work.primary_location.source.issn,
-        type: work.primary_location.source.type,
-        host_organization: work.primary_location.source.host_organization_name
-      } : null,
-      license: work.primary_location.license,
-      version: work.primary_location.version
-    } : null,
-    // Abstract (reconstructed from inverted index)
-    abstract: work.abstract_inverted_index ?
-      reconstructAbstract(work.abstract_inverted_index) : null,
-    // Bibliographic info
-    biblio: work.biblio,
-    // Key metrics and identifiers
-    referenced_works_count: work.referenced_works_count,
-    cited_by_percentile_year: work.cited_by_percentile_year,
-    fwci: work.fwci,
-    // Keywords
-    keywords: work.keywords?.slice(0, 10).map((k: any) => ({
-      keyword: k.keyword || k.display_name,
-      score: k.score
-    })) || [],
-    // Grants/funding
-    grants: work.grants?.slice(0, 5).map((g: any) => ({
-      funder: g.funder,
-      funder_display_name: g.funder_display_name,
-      award_id: g.award_id
-    })) || [],
-    // Reference and citation counts
-    referenced_works: work.referenced_works || [],
-    related_works: work.related_works || []
-  };
-}
-
-// Helper function to reconstruct abstract from inverted index
-function reconstructAbstract(invertedIndex: any): string {
-  const words: { [key: number]: string } = {};
-
-  for (const [word, positions] of Object.entries(invertedIndex)) {
-    if (Array.isArray(positions)) {
-      positions.forEach((pos: number) => {
-        words[pos] = word;
-      });
-    }
-  }
-
-  const sortedPositions = Object.keys(words).map(Number).sort((a, b) => a - b);
-  return sortedPositions.map(pos => words[pos]).join(' ');
-}
 
 // Define all tools
 const tools: Tool[] = [
@@ -619,11 +52,11 @@ const tools: Tool[] = [
           description:
             'Search query. Supports Boolean operators (AND, OR, NOT). Example: "machine learning AND (neural networks OR deep learning)"',
         },
-        from_publication_year: {
+        from_year: {
           type: 'number',
           description: 'Filter works published from this year onwards',
         },
-        to_publication_year: {
+        to_year: {
           type: 'number',
           description: 'Filter works published up to this year',
         },
@@ -675,6 +108,7 @@ const tools: Tool[] = [
         per_page: {
           type: 'number',
           description: 'Results per page, max 200 (default: 10; use 20 for broader coverage)',
+          maximum: 200,
         },
       },
     },
@@ -709,6 +143,7 @@ const tools: Tool[] = [
         per_page: {
           type: 'number',
           description: 'Number of related works to return (default: 10, max: 200)',
+          maximum: 200,
         },
       },
       required: ['id'],
@@ -762,6 +197,7 @@ const tools: Tool[] = [
         per_page: {
           type: 'number',
           description: 'Results per page (default: 10, use 20 for broader coverage, max 200)',
+          maximum: 200,
         },
       },
       required: ['topic'],
@@ -808,6 +244,7 @@ const tools: Tool[] = [
         per_page: {
           type: 'number',
           description: 'Citations per page (default: 10, max: 200)',
+          maximum: 200,
         },
         sort: {
           type: 'string',
@@ -835,7 +272,7 @@ const tools: Tool[] = [
   {
     name: 'get_citation_network',
     description:
-      'Get a citation network for a work including both citing works (forward) and referenced works (backward). Returns structured data for network visualization and analysis.',
+      'Get a citation network for a work including both citing works (forward) and referenced works (backward). Returns immediate connections only. Citing works are returned as summaries; referenced works as IDs (use batch_resolve_references to hydrate).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -843,18 +280,15 @@ const tools: Tool[] = [
           type: 'string',
           description: 'Work identifier (OpenAlex ID, DOI, or URL)',
         },
-        depth: {
-          type: 'number',
-          description:
-            'Network depth: 1 = immediate citations/references only, 2 = second-order connections (default: 1)',
-        },
         max_citing: {
           type: 'number',
-          description: 'Maximum number of citing works to include (default: 50)',
+          description: 'Maximum number of citing works to include (default: 50, max: 200)',
+          maximum: 200,
         },
         max_references: {
           type: 'number',
-          description: 'Maximum number of referenced works to include (default: 50)',
+          description: 'Maximum number of referenced works to include (default: 50, max: 200)',
+          maximum: 200,
         },
       },
       required: ['id'],
@@ -907,6 +341,7 @@ const tools: Tool[] = [
         per_page: {
           type: 'number',
           description: 'Number of top works to return (default: 10, use 20 for broader coverage, max: 200)',
+          maximum: 200,
         },
       },
     },
@@ -943,6 +378,7 @@ const tools: Tool[] = [
         per_page: {
           type: 'number',
           description: 'Results per page (default: 10, max: 200)',
+          maximum: 200,
         },
       },
     },
@@ -973,6 +409,7 @@ const tools: Tool[] = [
         per_page: {
           type: 'number',
           description: 'Works per page (default: 10, max: 200)',
+          maximum: 200,
         },
       },
       required: ['author_id'],
@@ -1023,6 +460,7 @@ const tools: Tool[] = [
         per_page: {
           type: 'number',
           description: 'Results per page (default: 10, max: 200)',
+          maximum: 200,
         },
       },
     },
@@ -1093,7 +531,8 @@ const tools: Tool[] = [
         },
         per_page: {
           type: 'number',
-          description: 'Number of trending topics to return (default: 10)',
+          description: 'Number of trending topics to return (default: 10, max: 200)',
+          maximum: 200,
         },
       },
     },
@@ -1169,6 +608,7 @@ const tools: Tool[] = [
         per_page: {
           type: 'number',
           description: 'Results per page (default: 10, max: 200)',
+          maximum: 200,
         },
       },
     },
@@ -1222,7 +662,7 @@ const tools: Tool[] = [
           type: 'string',
           description: 'Sort: cited_by_count:desc (default), publication_year:desc, relevance_score',
         },
-        per_page: { type: 'number', description: 'Results per page (default: 10, use 20 for broader coverage, max: 200)' },
+        per_page: { type: 'number', description: 'Results per page (default: 10, use 20 for broader coverage, max: 200)', maximum: 200 },
       },
       required: ['journal_list'],
     },
@@ -1260,7 +700,7 @@ const tools: Tool[] = [
           type: 'string',
           description: 'Sort: cited_by_count:desc (default for credibility), publication_year:desc, relevance_score',
         },
-        per_page: { type: 'number', description: 'Results per page (default: 10, use 20 for broader coverage, max 200)' },
+        per_page: { type: 'number', description: 'Results per page (default: 10, use 20 for broader coverage, max 200)', maximum: 200 },
       },
     },
   },
@@ -1281,7 +721,7 @@ const tools: Tool[] = [
           description: 'Venue type: journal, conference, repository (default: journal)',
           enum: ['journal', 'conference', 'repository'],
         },
-        per_page: { type: 'number', description: 'Number of venues to return (default: 10, max: 50)' },
+        per_page: { type: 'number', description: 'Number of venues to return (default: 10, max: 50)', maximum: 50 },
       },
       required: ['query'],
     },
@@ -1357,7 +797,7 @@ const tools: Tool[] = [
           type: 'string',
           description: 'Filter by institution',
         },
-        per_page: { type: 'number', description: 'Results per page (default: 10, max: 50)' },
+        per_page: { type: 'number', description: 'Results per page (default: 10, max: 50)', maximum: 50 },
       },
       required: ['topic'],
     },
@@ -1384,7 +824,7 @@ const tools: Tool[] = [
           type: 'number',
           description: 'Minimum citations (default: 10; use 50+ for highly-cited reviews)',
         },
-        per_page: { type: 'number', description: 'Results per page (default: 10, max: 50)' },
+        per_page: { type: 'number', description: 'Results per page (default: 10, max: 50)', maximum: 50 },
       },
       required: ['query'],
     },
@@ -1413,7 +853,7 @@ const tools: Tool[] = [
           type: 'string',
           description: 'Restrict to a specific venue (e.g., "Nature", "Science", "NeurIPS")',
         },
-        per_page: { type: 'number', description: 'Results per page (default: 10, max: 50)' },
+        per_page: { type: 'number', description: 'Results per page (default: 10, max: 50)', maximum: 50 },
       },
       required: ['query'],
     },
@@ -1453,7 +893,7 @@ const tools: Tool[] = [
           description: 'Optional: restrict to a specific venue',
         },
         min_citations: { type: 'number', description: 'Minimum citation count' },
-        per_page: { type: 'number', description: 'Results per page (default: 10, max: 50)' },
+        per_page: { type: 'number', description: 'Results per page (default: 10, max: 50)', maximum: 50 },
       },
       required: ['query'],
     },
@@ -1483,88 +923,16 @@ const server = new Server(
   }
 );
 
-// Helper function to build filter object
-function buildFilter(params: any): FilterOptions {
-  const filter: FilterOptions = {};
-
-  // Handle publication year range
-  const fromYear = params.from_publication_year || params.from_year;
-  const toYear = params.to_publication_year || params.to_year;
-
-  if (fromYear && toYear) {
-    // Both from and to: use range format
-    filter['publication_year'] = `${fromYear}-${toYear}`;
-  } else if (fromYear) {
-    // Only from: use > operator
-    filter['publication_year'] = `>${fromYear - 1}`;
-  } else if (toYear) {
-    // Only to: use < operator
-    filter['publication_year'] = `<${toYear + 1}`;
-  }
-
-  // Other filters
-  if (params.cited_by_count) {
-    filter['cited_by_count'] = params.cited_by_count;
-  }
-  if (params.is_oa !== undefined) {
-    filter['is_oa'] = params.is_oa;
-  }
-  if (params.type) {
-    filter['type'] = params.type;
-  }
-  if (params.works_count) {
-    filter['works_count'] = params.works_count;
-  }
-  if (params.country_code) {
-    filter['country_code'] = params.country_code;
-  }
-  if (params.institution) {
-    filter['institutions.display_name'] = params.institution;
-  }
-  // Author institution filter — restrict to papers by authors at specific institutions.
-  // Accepts a single institution name, OR-separated names, or an institution_group preset key.
-  if (params.institution_group) {
-    const group = INSTITUTION_GROUPS[params.institution_group];
-    if (group) {
-      filter['authorships.institutions.display_name'] = group.institutions.join('|');
-    }
-  } else if (params.author_institution) {
-    // Accepts single name ("Harvard University") or pipe-separated list
-    filter['authorships.institutions.display_name'] = params.author_institution;
-  }
-  // Venue/source filters (critical for top-journal paper writing)
-  if (params.source_id) {
-    filter['primary_location.source.id'] = params.source_id;
-  }
-  if (params.source_name) {
-    filter['primary_location.source.display_name.search'] = params.source_name;
-  }
-  // ISSN filter for precise venue identification
-  if (params.source_issn) {
-    filter['primary_location.source.issn'] = params.source_issn;
-  }
-  // Minimum citations shorthand
-  if (params.min_citations !== undefined && params.min_citations > 0) {
-    filter['cited_by_count'] = `>${params.min_citations - 1}`;
-  }
-
-  console.error('buildFilter result:', JSON.stringify(filter));
-  return filter;
-}
-
 // List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  console.error('ListTools request received');
-  console.error('Returning', tools.length, 'tools');
+  debug('ListTools:', tools.length, 'tools');
   return { tools };
 });
 
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  console.error('Tool call received:', name);
-  console.error('Arguments:', JSON.stringify(args));
-  console.error('Request ID:', (request as any).id || 'no-id');
+  debug('Tool call:', name, JSON.stringify(args));
 
   try {
     // Type assertion for args
@@ -1824,19 +1192,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_author_collaborators': {
-        // Get author's works
-        const filter: FilterOptions = {
+        // Paginate through author's works to handle prolific authors
+        const authorFilter: FilterOptions = {
           'authorships.author.id': params.author_id,
         };
-        const works = await openAlexClient.getWorks({
-          filter,
-          perPage: 200,
-        });
+        const pageSize = CONFIG.MCP.MAX_PAGE_SIZE; // 200
+        let allWorks: any[] = [];
+        let page = 1;
+        const maxPages = 5; // Cap at 1000 works to avoid excessive API calls
+
+        while (page <= maxPages) {
+          const batch = await openAlexClient.getWorks({
+            filter: authorFilter,
+            perPage: pageSize,
+            page,
+            select: ['id', 'authorships'],
+          });
+          allWorks = allWorks.concat(batch.results);
+          if (allWorks.length >= batch.meta.count || batch.results.length < pageSize) break;
+          page++;
+        }
 
         // Count collaborators
         const collaboratorCounts: { [key: string]: { count: number; name: string; id: string } } = {};
 
-        for (const work of works.results) {
+        for (const work of allWorks) {
           if (work.authorships) {
             for (const authorship of work.authorships) {
               const coauthorId = authorship.author?.id;
@@ -1866,7 +1246,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               type: 'text',
               text: JSON.stringify({
                 author_id: params.author_id,
-                total_works_analyzed: works.results.length,
+                total_works_analyzed: allWorks.length,
                 collaborators,
               }, null, 2),
             },
@@ -2435,20 +1815,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('Error handling tool call:', errorMessage);
-    console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
-
-    const errorDetails: any = {
-      tool: name,
-      error: errorMessage,
-      timestamp: new Date().toISOString(),
-    };
-
-    if (error instanceof Error) {
-      errorDetails.type = error.constructor.name;
-      if (error.stack) {
-        errorDetails.stack = error.stack.split('\n').slice(0, 3).join('\n');
-      }
+    // Log full details to stderr for debugging; keep client response clean
+    console.error(`[openalex] Error in ${name}:`, errorMessage);
+    if (error instanceof Error && error.stack) {
+      debug('Stack:', error.stack);
     }
 
     return {
@@ -2458,7 +1828,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           text: JSON.stringify({
             success: false,
             error: errorMessage,
-            details: errorDetails,
+            tool: name,
           }, null, 2),
         },
       ],
@@ -2471,7 +1841,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('OpenAlex MCP Server running on stdio');
+  debug('Server running on stdio');
 }
 
 main().catch((error) => {
