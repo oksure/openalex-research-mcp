@@ -2,6 +2,17 @@
 
 All notable changes to the OpenAlex MCP Server will be documented in this file.
 
+## [0.4.1] - 2026-04-01
+
+### Fixed
+- **Quoted phrase search not working** (#6): Double quotes in search queries were lost in MCP JSON serialization, causing token-matched results (94K+) instead of phrase-matched results (6K). Added `exact_phrase` boolean parameter to all 16 search tools — when `true`, the server wraps the query in double quotes before sending to OpenAlex. Handles edge cases: already-quoted input, interior quotes, whitespace-only strings.
+
+### Added
+- **`search_field` parameter**: New enum parameter (`title`, `abstract`, `fulltext`) on 10 works-related tools. Restricts search to a specific field via OpenAlex's filter-based search (`title.search`, `abstract.search`, `fulltext.search`). Cannot be combined with `exact_phrase` (phrase search takes priority when both are set).
+- **`src/search-helpers.ts`**: New module with `wrapPhraseSearch()` and `applySearchField()` helper functions.
+- 22 new test cases (65 total) covering phrase wrapping, edge cases, field scoping, and conflict resolution.
+- `npm test` now runs automatically before `npm publish` via `prepublishOnly` hook.
+
 ## [0.4.0] - 2026-03-09
 
 ### Added
