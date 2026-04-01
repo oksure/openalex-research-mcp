@@ -20,7 +20,7 @@
     "watch": "tsc --watch",
     "test": "vitest run",
     "test:integration": "node tests/integration.test.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "mcp",

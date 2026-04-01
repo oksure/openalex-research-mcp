@@ -18,6 +18,7 @@ import {
   summarizeWorksList, getFullWorkDetails, reconstructAbstract,
 } from './formatters.js';
 import { buildFilter } from './filter.js';
+import { wrapPhraseSearch, applySearchField } from './search-helpers.js';
 
 // Handle `openalex-research-mcp setup [flags]` before starting the MCP server
 if (process.argv[2] === 'setup') {
@@ -50,7 +51,17 @@ const tools: Tool[] = [
         query: {
           type: 'string',
           description:
-            'Search query. Supports Boolean operators (AND, OR, NOT). Example: "machine learning AND (neural networks OR deep learning)"',
+            'Search query. Supports Boolean operators (AND, OR, NOT). Example: "machine learning AND (neural networks OR deep learning)". For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
+        },
+        search_field: {
+          type: 'string',
+          description: 'Restrict search to a specific field: \'title\' (paper titles only), \'abstract\' (abstracts only), or \'fulltext\' (full text only). By default, searches across all fields. Cannot be combined with exact_phrase.',
+          enum: ['title', 'abstract', 'fulltext'],
         },
         from_year: {
           type: 'number',
@@ -159,7 +170,17 @@ const tools: Tool[] = [
         topic: {
           type: 'string',
           description:
-            'Topic name or keywords to search for (e.g., "artificial intelligence", "climate change", "quantum computing")',
+            'Topic name or keywords to search for (e.g., "artificial intelligence", "climate change", "quantum computing"). For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
+        },
+        search_field: {
+          type: 'string',
+          description: 'Restrict search to a specific field: \'title\' (paper titles only), \'abstract\' (abstracts only), or \'fulltext\' (full text only). By default, searches across all fields. Cannot be combined with exact_phrase.',
+          enum: ['title', 'abstract', 'fulltext'],
         },
         from_year: {
           type: 'number',
@@ -303,11 +324,21 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Search query to filter works (optional)',
+          description: 'Search query to filter works (optional). For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
         },
         topic: {
           type: 'string',
-          description: 'Filter by research topic',
+          description: 'Filter by research topic. For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
+        },
+        search_field: {
+          type: 'string',
+          description: 'Restrict search to a specific field: \'title\' (paper titles only), \'abstract\' (abstracts only), or \'fulltext\' (full text only). By default, searches across all fields. Cannot be combined with exact_phrase.',
+          enum: ['title', 'abstract', 'fulltext'],
         },
         from_year: {
           type: 'number',
@@ -357,7 +388,12 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Author name or search query',
+          description: 'Author name or search query. For exact phrase matching of a full name (e.g., \'Sarah Jane Williams\') or a concept (e.g., \'deep reinforcement learning\'), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, name/query tokens are matched independently. Use this when the query is a full name (e.g., \'Anna Maria Bianchi\') or a specific multi-word concept.',
+          default: false,
         },
         works_count: {
           type: 'string',
@@ -443,7 +479,12 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Institution name or search query',
+          description: 'Institution name or search query. For exact phrase matching of a multi-word institution name (e.g., \'London School of Economics\', \'Seoul National University\'), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, name tokens are matched independently (may return partial matches). Use this when the query is a specific multi-word institution name.',
+          default: false,
         },
         country_code: {
           type: 'string',
@@ -476,7 +517,17 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Search query or topic to analyze',
+          description: 'Search query or topic to analyze. For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
+        },
+        search_field: {
+          type: 'string',
+          description: 'Restrict search to a specific field: \'title\' (paper titles only), \'abstract\' (abstracts only), or \'fulltext\' (full text only). By default, searches across all fields. Cannot be combined with exact_phrase.',
+          enum: ['title', 'abstract', 'fulltext'],
         },
         from_year: {
           type: 'number',
@@ -500,7 +551,12 @@ const tools: Tool[] = [
         topics: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Array of topics/queries to compare (2-5 recommended)',
+          description: 'Array of topics/queries to compare (2-5 recommended). For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching on all topics in the array. Without this, search terms are matched independently. Applies uniformly to every topic — cannot selectively quote individual items.',
+          default: false,
         },
         from_year: {
           type: 'number',
@@ -546,7 +602,17 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Search query or topic to analyze',
+          description: 'Search query or topic to analyze. For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
+        },
+        search_field: {
+          type: 'string',
+          description: 'Restrict search to a specific field: \'title\' (paper titles only), \'abstract\' (abstracts only), or \'fulltext\' (full text only). By default, searches across all fields. Cannot be combined with exact_phrase.',
+          enum: ['title', 'abstract', 'fulltext'],
         },
         from_year: {
           type: 'number',
@@ -591,7 +657,12 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Source name or search query',
+          description: 'Source/journal name or search query. For exact phrase matching of a multi-word journal name (e.g., \'Journal of Financial Economics\', \'Management Information Systems Quarterly\'), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching of the source name. Without this, name tokens are matched independently. Use when the journal/conference name is a specific multi-word phrase.',
+          default: false,
         },
         type: {
           type: 'string',
@@ -640,7 +711,17 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Topic or keyword query (e.g., "artificial intelligence", "LLMs", "supply chain")',
+          description: 'Topic or keyword query (e.g., "artificial intelligence", "LLMs", "supply chain"). For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
+        },
+        search_field: {
+          type: 'string',
+          description: 'Restrict search to a specific field: \'title\' (paper titles only), \'abstract\' (abstracts only), or \'fulltext\' (full text only). By default, searches across all fields. Cannot be combined with exact_phrase.',
+          enum: ['title', 'abstract', 'fulltext'],
         },
         journal_list: {
           type: 'string',
@@ -679,7 +760,17 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Topic or keyword query to search within the venue',
+          description: 'Topic or keyword query to search within the venue. For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
+        },
+        search_field: {
+          type: 'string',
+          description: 'Restrict search to a specific field: \'title\' (paper titles only), \'abstract\' (abstracts only), or \'fulltext\' (full text only). By default, searches across all fields. Cannot be combined with exact_phrase.',
+          enum: ['title', 'abstract', 'fulltext'],
         },
         venue_name: {
           type: 'string',
@@ -714,7 +805,12 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Field or topic name (e.g., "machine learning", "climate science", "genetics")',
+          description: 'Field or topic name (e.g., "machine learning", "climate science", "genetics"). For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
         },
         type: {
           type: 'string',
@@ -783,7 +879,12 @@ const tools: Tool[] = [
       properties: {
         topic: {
           type: 'string',
-          description: 'Research topic or field (e.g., "transformer models", "CRISPR gene editing")',
+          description: 'Research topic or field (e.g., "transformer models", "CRISPR gene editing"). For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
         },
         min_h_index: {
           type: 'number',
@@ -812,7 +913,17 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Topic or research question',
+          description: 'Topic or research question. For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
+        },
+        search_field: {
+          type: 'string',
+          description: 'Restrict search to a specific field: \'title\' (paper titles only), \'abstract\' (abstracts only), or \'fulltext\' (full text only). By default, searches across all fields. Cannot be combined with exact_phrase.',
+          enum: ['title', 'abstract', 'fulltext'],
         },
         from_year: { type: 'number', description: 'From year' },
         to_year: { type: 'number', description: 'To year' },
@@ -839,7 +950,17 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Research topic or concept',
+          description: 'Research topic or concept. For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
+        },
+        search_field: {
+          type: 'string',
+          description: 'Restrict search to a specific field: \'title\' (paper titles only), \'abstract\' (abstracts only), or \'fulltext\' (full text only). By default, searches across all fields. Cannot be combined with exact_phrase.',
+          enum: ['title', 'abstract', 'fulltext'],
         },
         min_citations: {
           type: 'number',
@@ -885,7 +1006,17 @@ const tools: Tool[] = [
       properties: {
         query: {
           type: 'string',
-          description: 'Topic query to find OA papers on',
+          description: 'Topic query to find OA papers on. For exact phrase matching (e.g., \'privacy paradox\' as a specific concept), set exact_phrase to true.',
+        },
+        exact_phrase: {
+          type: 'boolean',
+          description: 'Set to true for exact phrase matching. Without this, search terms are matched independently. Use this when searching for a specific concept or multi-word term (e.g., \'privacy paradox\', \'supply chain resilience\').',
+          default: false,
+        },
+        search_field: {
+          type: 'string',
+          description: 'Restrict search to a specific field: \'title\' (paper titles only), \'abstract\' (abstracts only), or \'fulltext\' (full text only). By default, searches across all fields. Cannot be combined with exact_phrase.',
+          enum: ['title', 'abstract', 'fulltext'],
         },
         from_year: { type: 'number', description: 'From publication year' },
         source_name: {
@@ -943,8 +1074,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { searchWorksSchema } = await import('./validation.js');
         const validated = validateInput(searchWorksSchema, params, 'search_works');
         const filter = buildFilter(validated);
+        const { search, filterAdditions } = applySearchField(validated.query, validated.search_field, validated.exact_phrase);
+        if (filterAdditions) Object.assign(filter, filterAdditions);
         const options: SearchOptions = {
-          search: validated.query,
+          search,
           filter,
           sort: validated.sort,
           page: validated.page || 1,
@@ -1000,8 +1133,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'search_by_topic': {
         const filter = buildFilter(params);
+        const { search, filterAdditions } = applySearchField(params.topic, params.search_field, params.exact_phrase);
+        if (filterAdditions) Object.assign(filter, filterAdditions);
         const options: SearchOptions = {
-          search: params.topic,
+          search,
           filter,
           sort: params.sort || 'relevance_score',
           perPage: params.per_page || DEFAULT_PAGE_SIZE,
@@ -1116,8 +1251,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (minCitations > 0) {
           filter.cited_by_count = `>${minCitations - 1}`;
         }
+        const { search, filterAdditions } = applySearchField(params.query || params.topic, params.search_field, params.exact_phrase);
+        if (filterAdditions) Object.assign(filter, filterAdditions);
         const options: SearchOptions = {
-          search: params.query || params.topic,
+          search,
           filter,
           sort: 'cited_by_count:desc',
           perPage: params.per_page || DEFAULT_PAGE_SIZE,
@@ -1137,7 +1274,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'search_authors': {
         const filter = buildFilter(params);
         const options: SearchOptions = {
-          search: params.query,
+          search: wrapPhraseSearch(params.query, params.exact_phrase),
           filter,
           sort: params.sort || 'cited_by_count:desc',
           perPage: params.per_page || DEFAULT_PAGE_SIZE,
@@ -1257,7 +1394,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'search_institutions': {
         const filter = buildFilter(params);
         const options: SearchOptions = {
-          search: params.query,
+          search: wrapPhraseSearch(params.query, params.exact_phrase),
           filter,
           perPage: params.per_page || DEFAULT_PAGE_SIZE,
         };
@@ -1274,8 +1411,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'analyze_topic_trends': {
         const filter = buildFilter(params);
+        const { search, filterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
+        if (filterAdditions) Object.assign(filter, filterAdditions);
         const options: SearchOptions = {
-          search: params.query,
+          search,
           filter,
           groupBy: 'publication_year',
         };
@@ -1296,7 +1435,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         for (const topic of params.topics) {
           const filter = buildFilter(params);
           const options: SearchOptions = {
-            search: topic,
+            search: wrapPhraseSearch(topic, params.exact_phrase),
             filter,
             perPage: 1,
           };
@@ -1346,8 +1485,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'analyze_geographic_distribution': {
         const filter = buildFilter(params);
+        const { search, filterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
+        if (filterAdditions) Object.assign(filter, filterAdditions);
         const options: SearchOptions = {
-          search: params.query,
+          search,
           filter,
           groupBy: 'institutions.country_code',
         };
@@ -1377,7 +1518,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'search_sources': {
         const filter = buildFilter(params);
         const options: SearchOptions = {
-          search: params.query,
+          search: wrapPhraseSearch(params.query, params.exact_phrase),
           filter,
           sort: 'summary_stats.h_index:desc',
           perPage: params.per_page || DEFAULT_PAGE_SIZE,
@@ -1492,8 +1633,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           filter['cited_by_count'] = `>${params.min_citations - 1}`;
         }
 
+        const { search: searchQuery, filterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
+        if (filterAdditions) Object.assign(filter, filterAdditions);
+
         const options: SearchOptions = {
-          search: params.query,
+          search: searchQuery,
           filter,
           sort: params.sort || 'cited_by_count:desc',
           perPage: params.per_page || DEFAULT_PAGE_SIZE,
@@ -1543,8 +1687,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           filter['cited_by_count'] = `>${params.min_citations - 1}`;
         }
 
+        const { search: venueSearch, filterAdditions: venueFilterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
+        if (venueFilterAdditions) Object.assign(filter, venueFilterAdditions);
+
         const options: SearchOptions = {
-          search: params.query,
+          search: venueSearch,
           filter,
           sort: params.sort || 'cited_by_count:desc',
           perPage: params.per_page || DEFAULT_PAGE_SIZE,
@@ -1559,7 +1706,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'get_top_venues_for_field': {
         const venueType = params.type || 'journal';
         const options: SearchOptions = {
-          search: params.query,
+          search: wrapPhraseSearch(params.query, params.exact_phrase),
           filter: { 'type': venueType },
           sort: 'summary_stats.h_index:desc',
           perPage: Math.min(params.per_page || DEFAULT_PAGE_SIZE, 50),
@@ -1663,7 +1810,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (params.min_h_index) filter['summary_stats.h_index'] = `>${params.min_h_index - 1}`;
 
         const options: SearchOptions = {
-          search: params.topic,
+          search: wrapPhraseSearch(params.topic, params.exact_phrase),
           filter,
           sort: 'summary_stats.h_index:desc',
           perPage: Math.min(params.per_page || DEFAULT_PAGE_SIZE, 50),
@@ -1695,8 +1842,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const minCit = params.min_citations !== undefined ? params.min_citations : 10;
         if (minCit > 0) filter['cited_by_count'] = `>${minCit - 1}`;
 
+        const { search: reviewSearch, filterAdditions: reviewFilterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
+        if (reviewFilterAdditions) Object.assign(filter, reviewFilterAdditions);
+
         const options: SearchOptions = {
-          search: params.query,
+          search: reviewSearch,
           filter,
           sort: 'cited_by_count:desc',
           perPage: Math.min(params.per_page || DEFAULT_PAGE_SIZE, 50),
@@ -1720,8 +1870,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           filter['primary_location.source.display_name.search'] = params.source_name;
         }
 
+        const { search: seminalSearch, filterAdditions: seminalFilterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
+        if (seminalFilterAdditions) Object.assign(filter, seminalFilterAdditions);
+
         const options: SearchOptions = {
-          search: params.query,
+          search: seminalSearch,
           filter,
           sort: 'cited_by_count:desc',
           perPage: Math.min(params.per_page || DEFAULT_PAGE_SIZE, 50),
@@ -1765,8 +1918,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           filter['cited_by_count'] = `>${params.min_citations - 1}`;
         }
 
+        const { search: oaSearch, filterAdditions: oaFilterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
+        if (oaFilterAdditions) Object.assign(filter, oaFilterAdditions);
+
         const options: SearchOptions = {
-          search: params.query,
+          search: oaSearch,
           filter,
           sort: 'cited_by_count:desc',
           perPage: Math.min(params.per_page || DEFAULT_PAGE_SIZE, 50),
