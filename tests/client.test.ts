@@ -160,6 +160,69 @@ describe('OpenAlexClient', () => {
     });
   });
 
+  describe('Phrase search query construction', () => {
+    it('should preserve double-quoted phrase in search param', async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        data: { meta: { count: 5, page: 1, per_page: 10 }, results: [] },
+      });
+
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(mockGet) as any);
+
+      const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
+      await testClient.getWorks({ search: '"privacy paradox"' });
+
+      expect(mockGet).toHaveBeenCalledWith('/works', {
+        params: expect.objectContaining({ search: '"privacy paradox"' }),
+      });
+      // Verify quotes are not stripped — this is the regression the v0.4.1 fix guards
+      const actualSearch = mockGet.mock.calls[0][1].params.search;
+      expect(actualSearch).toBe('"privacy paradox"');
+      expect(actualSearch.startsWith('"')).toBe(true);
+      expect(actualSearch.endsWith('"')).toBe(true);
+    });
+
+    it('should pass field-scoped filter additions correctly', async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        data: { meta: { count: 3, page: 1, per_page: 10 }, results: [] },
+      });
+
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(mockGet) as any);
+
+      const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
+      // Simulate what happens when applySearchField returns filterAdditions for title.search
+      await testClient.getWorks({
+        filter: { 'title.search': 'supply chain resilience' },
+      });
+
+      expect(mockGet).toHaveBeenCalledWith('/works', {
+        params: expect.objectContaining({
+          filter: 'title.search:supply chain resilience',
+        }),
+      });
+      // search param should NOT be present when using field-scoped filter
+      expect(mockGet.mock.calls[0][1].params.search).toBeUndefined();
+    });
+
+    it('should handle quoted phrase combined with other filters', async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        data: { meta: { count: 1, page: 1, per_page: 10 }, results: [] },
+      });
+
+      vi.mocked(axios.create).mockReturnValue(createMockAxios(mockGet) as any);
+
+      const testClient = new OpenAlexClient({ email: 'test@example.com', enableCache: false });
+      await testClient.getWorks({
+        search: '"machine learning"',
+        filter: { 'publication_year': '>2019', 'cited_by_count': '>49' },
+      });
+
+      const callParams = mockGet.mock.calls[0][1].params;
+      expect(callParams.search).toBe('"machine learning"');
+      expect(callParams.filter).toContain('publication_year:>2019');
+      expect(callParams.filter).toContain('cited_by_count:>49');
+    });
+  });
+
   describe('Retry Logic', () => {
     it('should retry failed requests', async () => {
       let attempts = 0;
