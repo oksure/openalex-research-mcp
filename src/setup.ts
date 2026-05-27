@@ -25,11 +25,7 @@ function findClaudeConfigPath(): string {
   } else if (platform === 'win32') {
     const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
     const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-    candidates.push(
-      path.join(appData, 'Claude', 'claude_desktop_config.json'),
-      path.join(appData, 'Claude Desktop', 'claude_desktop_config.json'),
-    );
-    // Microsoft Store (MSIX) version uses a packaged app path
+    // MSIX-packaged Claude Desktop (standard installer) stores config here
     const packagesDir = path.join(localAppData, 'Packages');
     if (fs.existsSync(packagesDir)) {
       try {
@@ -41,6 +37,11 @@ function findClaudeConfigPath(): string {
         }
       } catch {}
     }
+    // Legacy/fallback: non-MSIX installs
+    candidates.push(
+      path.join(appData, 'Claude', 'claude_desktop_config.json'),
+      path.join(appData, 'Claude Desktop', 'claude_desktop_config.json'),
+    );
   } else {
     candidates.push(
       path.join(home, '.config', 'Claude', 'claude_desktop_config.json'),

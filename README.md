@@ -184,10 +184,9 @@ export OPENALEX_API_KEY="your-api-key"
 Add to your Claude Desktop config file:
 
 **MacOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-**Windows (Microsoft Store)**: `%LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude\claude_desktop_config.json`
+**Windows**: `%LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude\claude_desktop_config.json`
 
-> **Tip:** In Claude Desktop, go to **File → Settings → Developer → Edit Config** to open the correct config file regardless of install method.
+> **Tip:** In Claude Desktop, go to **File → Settings → Developer → Edit Config** to open the correct config file directly. The `npx openalex-research-mcp setup` command also auto-detects the path.
 
 **If you installed via npm/npx:**
 ```json
