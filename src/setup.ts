@@ -24,10 +24,23 @@ function findClaudeConfigPath(): string {
     );
   } else if (platform === 'win32') {
     const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
     candidates.push(
       path.join(appData, 'Claude', 'claude_desktop_config.json'),
       path.join(appData, 'Claude Desktop', 'claude_desktop_config.json'),
     );
+    // Microsoft Store (MSIX) version uses a packaged app path
+    const packagesDir = path.join(localAppData, 'Packages');
+    if (fs.existsSync(packagesDir)) {
+      try {
+        const dirs = fs.readdirSync(packagesDir).filter(d => d.startsWith('Claude_'));
+        for (const dir of dirs) {
+          candidates.push(
+            path.join(packagesDir, dir, 'LocalCache', 'Roaming', 'Claude', 'claude_desktop_config.json'),
+          );
+        }
+      } catch {}
+    }
   } else {
     candidates.push(
       path.join(home, '.config', 'Claude', 'claude_desktop_config.json'),
