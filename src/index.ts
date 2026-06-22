@@ -1117,16 +1117,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_related_works': {
         const work = await openAlexClient.getWork(params.id);
-        const relatedIds = work.related_works || [];
+        const relatedIds: string[] = work.related_works || [];
 
-        // Fetch related works in parallel
+        // Fetch all related works in ONE request via the ids.openalex filter
+        // (was N separate getWork calls). Strip the URL prefix to bare W-ids,
+        // then restore the original related_works order (the API returns its own).
         const limit = Math.min(params.per_page || DEFAULT_PAGE_SIZE, relatedIds.length);
-        const relatedResults = await Promise.allSettled(
-          relatedIds.slice(0, limit).map((id: string) => openAlexClient.getWork(id))
-        );
-        const relatedWorks = relatedResults
-          .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
-          .map(r => summarizeWork(r.value));
+        const bareIds = relatedIds.slice(0, limit).map(u => u.split('/').pop()!);
+        let relatedWorks: any[] = [];
+        if (bareIds.length > 0) {
+          const results = await openAlexClient.getWorks({
+            filter: { 'ids.openalex': bareIds.join('|') },
+            perPage: bareIds.length,
+          });
+          const byId = new Map<string, any>(
+            results.results.map((w: any): [string, any] => [String(w.id).split('/').pop()!, w])
+          );
+          relatedWorks = bareIds
+            .map(id => byId.get(id))
+            .filter(Boolean)
+            .map(summarizeWork);
+        }
 
         return {
           content: [

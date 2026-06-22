@@ -2,6 +2,11 @@
 
 All notable changes to the OpenAlex MCP Server will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- **`get_related_works` now fetches in a single batched request** (`filter=ids.openalex:W1|W2|…`) instead of one `get_work` call per related ID (N+1 → 1). Original `related_works` ordering is preserved. Fewer round-trips, faster, and kinder to the rate limit.
+
 ## [0.5.0] - 2026-06-22
 
 ### Added
