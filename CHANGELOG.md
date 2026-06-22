@@ -5,6 +5,7 @@ All notable changes to the OpenAlex MCP Server will be documented in this file.
 ## [0.5.0] - 2026-06-22
 
 ### Added
+- **Claude Skill packaging** (`skill/`): the same OpenAlex access is now also shipped as a token-frugal Claude Skill — a `SKILL.md` plus a zero-dependency Python CLI (`skill/bin/openalex`) and reference docs (filter syntax, journal presets). It loads on demand and shells out to the CLI, costing nothing while idle. Use the MCP server in MCP clients (Claude Desktop, TypingMind); use the skill in coding agents with shell access. Reflects the broader shift from always-on MCP servers toward on-demand skills.
 - **Universal input validation**: every argument-taking tool (30) now validates its input against a Zod schema before execution, via a central `TOOL_SCHEMAS` map. Previously only `search_works` was validated — the other 29 tools accepted unvalidated input and 11 had no schema at all. Invalid input (wrong types, missing required fields, bad enum values) now returns a clear `Validation error: …` message instead of a cryptic downstream API error or silent misbehavior.
 - **`summarizeInstitution`**: `search_institutions` now returns compact summaries (id, name, ROR, country, type, h-index, i10-index, 2yr mean citedness, geo, top topics, associated institutions) instead of raw OpenAlex institution objects, which carried multi-KB `x_concepts` / `counts_by_year` / `international` payloads per result. Large reduction in response size for MCP clients.
 - `health_check` now reports the server `version`.

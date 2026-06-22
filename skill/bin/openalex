@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""openalex — OpenAlex academic search CLI (api.openalex.org).
+
+A zero-dependency Python CLI that replaces raw curl+jq boilerplate for the
+openalex skill: it injects the optional API key, sets the polite-pool mailto,
+enforces a `select=` field list (full responses are ~3x larger), and
+reconstructs abstracts from the inverted index.
+
+Configuration (both optional — OpenAlex is free and usable with neither):
+  OPENALEX_EMAIL    your email → enables the "polite pool" (faster, kinder limits)
+  OPENALEX_API_KEY  premium key, if you have one
+
+Usage:
+  openalex works <query> [--filter F] [--sort S] [-n N] [--abstract] [--json]
+  openalex work <DOI|W-id> [--abstract] [--refs] [--json]
+  openalex authors <name> [-n N] [--json]
+  openalex author-works <A-id> [-n N] [--sort S] [--json]
+  openalex institutions <query> [-n N] [--json]
+  openalex topics <query> [-n N] [--json]
+  openalex sources <query> [-n N] [--json]
+  openalex cites <W-id> [-n N] [--json]          # papers citing W-id
+  openalex trend <T-id>                          # works per year for a topic
+  openalex abstract <DOI|W-id>                   # reconstructed abstract text
+
+Filter syntax (--filter): comma-joined, e.g. "from_publication_date:2024-01-01,cited_by_count:>10"
+Sort (--sort): e.g. "cited_by_count:desc" | "publication_date:desc"
+"""
+import json, os, re, sys, urllib.parse, urllib.request, urllib.error
+
+BASE = "https://api.openalex.org"
+SELECT_WORKS = "id,doi,title,publication_year,cited_by_count,authorships,primary_location"
+
+def get(path, **params):
+  # API key is optional — OpenAlex serves anonymous requests. An email enables
+  # the faster "polite pool". Neither is required for the CLI to work.
+  api_key = os.environ.get("OPENALEX_API_KEY")
+  email = os.environ.get("OPENALEX_EMAIL")
+  if api_key:
+    params["api_key"] = api_key
+  elif email:
+    params["mailto"] = email
+  url = f"{BASE}/{path}?{urllib.parse.urlencode(params)}"
+  ua = f"openalex-cli/1.0 (mailto:{email})" if email else "openalex-cli/1.0"
+  req = urllib.request.Request(url, headers={"User-Agent": ua})
+  last = None
+  for _ in range(2):  # one retry on transient network/timeout errors
+    try:
+      with urllib.request.urlopen(req, timeout=15) as r:
+        return json.load(r)
+    except urllib.error.HTTPError as e:
+      sys.exit(f"openalex: HTTP {e.code} on /{path}: {e.read().decode()[:300]}")
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+      last = e
+  sys.exit(f"openalex: /{path} request failed after retry ({type(last).__name__}); API slow/unreachable")
+
+def de_invert(inv):
+  if not inv: return "(no abstract)"
+  pos = sorted((p, w) for w, ps in inv.items() for p in ps)
+  return " ".join(w for _, w in pos)
+
+def fmt_work(w):
+  auths = [a["author"]["display_name"] for a in (w.get("authorships") or [])[:3]]
+  venue = ((w.get("primary_location") or {}).get("source") or {}).get("display_name") or "?"
+  return (f"{w.get('publication_year','?')}  cited:{w.get('cited_by_count',0):<6} {w.get('title','?')}\n"
+          f"      {', '.join(auths)}{' et al.' if len(w.get('authorships') or []) > 3 else ''} — {venue}\n"
+          f"      {w.get('doi') or w.get('id','')}")
+
+def fmt_entity(e):
+  inst = ""
+  if e.get("last_known_institutions"):
+    inst = f" — {e['last_known_institutions'][0].get('display_name','')}"
+  return (f"{e.get('display_name','?')}  works:{e.get('works_count','?')} cited:{e.get('cited_by_count','?')}"
+          f"{inst}\n      {e.get('id','')}")
+
+def show(items, fmt, as_json, meta=None):
+  if as_json:
+    print(json.dumps(items, ensure_ascii=False, indent=1))
+  else:
+    if meta is not None: print(f"(total: {meta})")
+    for it in items: print(fmt(it))
+
+def main():
+  args = sys.argv[1:]
+  if not args or args[0] in ("-h", "--help", "help"):
+    print(__doc__); return
+  cmd, rest = args[0], args[1:]
+  as_json = "--json" in rest
+  abstract = "--abstract" in rest
+  refs = "--refs" in rest
+  rest = [a for a in rest if a not in ("--json", "--abstract", "--refs")]
+  n, flt, srt = 10, "", ""
+  pos = []
+  i = 0
+  while i < len(rest):
+    if rest[i] == "-n": n = int(rest[i+1]); i += 2
+    elif rest[i] == "--filter": flt = rest[i+1]; i += 2
+    elif rest[i] == "--sort": srt = rest[i+1]; i += 2
+    elif rest[i].startswith("--"): sys.exit(f"openalex: unknown option {rest[i]}")
+    else: pos.append(rest[i]); i += 1
+  q = " ".join(pos)
+
+  def wid(s):  # normalize DOI/URL/W-id to a path id
+    s = s.strip()
+    if s.lower().startswith("10."): return f"doi:{s}"
+    return s.rsplit("/", 1)[-1] if s.startswith("http") else s
+
+  def wid_resolved(s):  # filter values (cites:, author.id:) need the bare entity id, not doi:
+    w = wid(s)
+    if w.startswith("doi:"):
+      return get(f"works/{w}", select="id")["id"].rsplit("/", 1)[-1]
+    return w
+
+  if cmd == "works":
+    p = {"search": q, "per_page": n, "select": SELECT_WORKS + (",abstract_inverted_index" if abstract else "")}
+    if flt: p["filter"] = flt
+    if srt: p["sort"] = srt
+    d = get("works", **p)
+    if abstract and not as_json:
+      for w in d["results"]:
+        print(fmt_work(w)); print(f"      {de_invert(w.get('abstract_inverted_index'))[:600]}\n")
+    else:
+      show(d["results"], fmt_work, as_json, d.get("meta", {}).get("count"))
+  elif cmd == "work":
+    sel = SELECT_WORKS + ",topics,open_access" + (",abstract_inverted_index" if abstract else "") + (",referenced_works" if refs else "")
+    d = get(f"works/{wid(q)}", select=sel)
+    if as_json: print(json.dumps(d, ensure_ascii=False, indent=1))
+    else:
+      print(fmt_work(d))
+      if abstract: print(f"\n{de_invert(d.get('abstract_inverted_index'))}")
+      if refs: print("\nreferences:\n" + "\n".join(d.get("referenced_works") or []))
+  elif cmd == "authors":
+    d = get("authors", search=q, per_page=n,
+            select="id,display_name,works_count,cited_by_count,last_known_institutions")
+    show(d["results"], fmt_entity, as_json, d.get("meta", {}).get("count"))
+  elif cmd == "author-works":
+    d = get("works", filter=f"author.id:{wid(q)}", sort=srt or "cited_by_count:desc",
+            per_page=n, select=SELECT_WORKS)
+    show(d["results"], fmt_work, as_json)
+  elif cmd in ("institutions", "topics", "sources"):
+    sel = {"institutions": "id,display_name,country_code,works_count,cited_by_count",
+           "topics": "id,display_name,works_count",
+           "sources": "id,display_name,issn_l,type,works_count,cited_by_count"}[cmd]
+    d = get(cmd, search=q, per_page=n, select=sel)
+    show(d["results"], fmt_entity, as_json, d.get("meta", {}).get("count"))
+  elif cmd == "cites":
+    d = get("works", filter=f"cites:{wid_resolved(q)}", per_page=n, sort=srt or "cited_by_count:desc", select=SELECT_WORKS)
+    show(d["results"], fmt_work, as_json, d.get("meta", {}).get("count"))
+  elif cmd == "trend":
+    d = get("works", filter=f"topics.id:{wid(q)}", group_by="publication_year")
+    rows = sorted(d.get("group_by", []), key=lambda g: g["key"])
+    if as_json: print(json.dumps(rows, indent=1))
+    else:
+      for g in rows: print(f"{g['key']}  {g['count']}")
+  elif cmd == "abstract":
+    d = get(f"works/{wid(q)}", select="title,abstract_inverted_index")
+    print(f"{d.get('title','?')}\n\n{de_invert(d.get('abstract_inverted_index'))}")
+  else:
+    sys.exit(f"openalex: unknown command '{cmd}' (see --help)")
+
+if __name__ == "__main__":
+  main()

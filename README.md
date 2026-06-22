@@ -24,6 +24,25 @@ This auto-detects your Claude Desktop config, prompts for your email and optiona
 - 🎓 **Curated journal presets** — UTD24, FT50, AJG/ABS tiers, top AI conferences, and more
 - 🏛️ **Institution group presets** — Ivy League, Top US, INSEAD+London, and more
 
+## Use as a Claude Skill (lightweight alternative)
+
+The same OpenAlex access is also packaged as a **Claude Skill** under
+[`skill/`](skill/) — a token-frugal alternative to the always-on MCP server.
+A skill loads into the agent's context only when invoked and shells out to a
+small zero-dependency CLI, so it costs nothing while idle. Use the **MCP server**
+in MCP clients (Claude Desktop, TypingMind); use the **skill** in coding agents
+(Claude Code, etc.) that already have shell access.
+
+```bash
+chmod +x skill/bin/openalex && export PATH="$PWD/skill/bin:$PATH"
+export OPENALEX_EMAIL="you@example.com"     # optional: faster polite pool
+openalex works "supply chain network" -n 5
+```
+
+See [`skill/README.md`](skill/README.md) for install and the MCP-vs-skill
+trade-off. (The industry is steadily shifting routine API access from always-on
+MCP servers toward on-demand skills — this repo ships both.)
+
 ## Features
 
 Access 240+ million scholarly works through 31 specialized tools:

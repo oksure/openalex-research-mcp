@@ -9,6 +9,7 @@
   },
   "files": [
     "build",
+    "skill",
     "README.md",
     "LICENSE",
     "QUICKSTART.md"
