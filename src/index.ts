@@ -1869,8 +1869,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // h-index filter is via summary_stats
         if (params.min_h_index) filter['summary_stats.h_index'] = `>${params.min_h_index - 1}`;
 
+        // Resolve the topic string to a topic ID and filter authors by topics.id
+        // (people who WORK on the topic). The previous name `search=` matched author
+        // display names — e.g. "machine learning" returned authors named like the
+        // query, not ML researchers. Fall back to name search if no topic matches.
+        let resolvedTopic: { id: string; display_name: string } | null = null;
+        const topicMatch = await openAlexClient.getTopics({
+          search: params.topic,
+          perPage: 1,
+          select: ['id', 'display_name'],
+        });
+        if (topicMatch.results.length > 0) {
+          const t = topicMatch.results[0];
+          resolvedTopic = { id: t.id, display_name: t.display_name };
+          filter['topics.id'] = String(t.id).split('/').pop()!;
+        }
+
         const options: SearchOptions = {
-          search: wrapPhraseSearch(params.topic, params.exact_phrase),
+          search: resolvedTopic ? undefined : wrapPhraseSearch(params.topic, params.exact_phrase),
           filter,
           sort: 'summary_stats.h_index:desc',
           perPage: Math.min(params.per_page || DEFAULT_PAGE_SIZE, 50),
@@ -1880,7 +1896,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{
             type: 'text',
             text: JSON.stringify({
-              meta: { count: results.meta?.count, topic: params.topic },
+              meta: {
+                count: results.meta?.count,
+                topic: params.topic,
+                resolved_topic: resolvedTopic,
+                match_strategy: resolvedTopic ? 'topics.id' : 'name_search_fallback',
+              },
               experts: results.results.map(summarizeAuthor)
             }, null, 2)
           }],
