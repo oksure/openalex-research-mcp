@@ -15,6 +15,7 @@ Usage:
   openalex work <DOI|W-id> [--abstract] [--refs] [--json]
   openalex authors <name> [-n N] [--json]
   openalex author-works <A-id> [-n N] [--sort S] [--json]
+  openalex experts <topic> [-n N] [--json]       # top authors on a topic, by h-index
   openalex institutions <query> [-n N] [--json]
   openalex topics <query> [-n N] [--json]
   openalex sources <query> [-n N] [--json]
@@ -136,6 +137,27 @@ def main():
     d = get("works", filter=f"author.id:{wid(q)}", sort=srt or "cited_by_count:desc",
             per_page=n, select=SELECT_WORKS)
     show(d["results"], fmt_work, as_json)
+  elif cmd == "experts":
+    # Find topic experts: resolve the topic string to a T-id, then list authors
+    # filtered by topics.id (people who WORK on the topic), ranked by h-index —
+    # NOT a name search, which would match author names instead of research areas.
+    td = get("topics", search=q, per_page=1, select="id,display_name")
+    if not td.get("results"):
+      sys.exit(f"openalex: no topic matched '{q}'")
+    topic = td["results"][0]
+    tid = topic["id"].rsplit("/", 1)[-1]
+    d = get("authors", filter=f"topics.id:{tid}", sort="summary_stats.h_index:desc",
+            per_page=n, select="id,display_name,works_count,cited_by_count,summary_stats,last_known_institutions")
+    if as_json:
+      print(json.dumps({"topic": topic, "experts": d["results"]}, ensure_ascii=False, indent=1))
+    else:
+      print(f"(topic: {topic['display_name']} — {d.get('meta', {}).get('count')} authors)")
+      for e in d["results"]:
+        h = (e.get("summary_stats") or {}).get("h_index")
+        insts = e.get("last_known_institutions") or []
+        inst = insts[0].get("display_name", "") if insts else ""
+        print(f"  h{h}  {e.get('display_name','?')}  (works:{e.get('works_count','?')}, cited:{e.get('cited_by_count','?')}) — {inst}")
+        print(f"      {e.get('id','')}")
   elif cmd in ("institutions", "topics", "sources"):
     sel = {"institutions": "id,display_name,country_code,works_count,cited_by_count",
            "topics": "id,display_name,works_count",

@@ -62,7 +62,10 @@ openalex work W2070854196 --abstract --refs
 ```bash
 openalex authors "daron acemoglu" -n 3
 openalex author-works A5012301204 -n 10    # top works by citation
+openalex experts "CRISPR gene editing" -n 5  # leading authors ON a topic, by h-index
 ```
+`experts` resolves the topic to a `topics.id` and ranks authors who work on it by
+h-index (unlike `authors`, which name-matches) — use it to find field leaders.
 
 ### Institutions / topics / sources
 ```bash
