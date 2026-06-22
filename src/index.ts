@@ -9,12 +9,12 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { OpenAlexClient, FilterOptions, SearchOptions } from './openalex-client.js';
 import { z } from 'zod';
-import { CONFIG, debug } from './config.js';
-import { validateInput } from './validation.js';
+import { CONFIG, VERSION, debug } from './config.js';
+import { validateInput, TOOL_SCHEMAS } from './validation.js';
 import { runSetup } from './setup.js';
 import { VENUE_PRESETS, INSTITUTION_GROUPS } from './presets.js';
 import {
-  summarizeWork, summarizeAuthor, summarizeSource,
+  summarizeWork, summarizeAuthor, summarizeSource, summarizeInstitution,
   summarizeWorksList, getFullWorkDetails, reconstructAbstract,
 } from './formatters.js';
 import { buildFilter } from './filter.js';
@@ -1045,7 +1045,7 @@ const tools: Tool[] = [
 const server = new Server(
   {
     name: 'openalex-mcp',
-    version: '0.4.0',
+    version: VERSION,
   },
   {
     capabilities: {
@@ -1069,19 +1069,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Type assertion for args
     const params = args as any;
 
+    // Validate input against the tool's schema (throws a clear error on bad input).
+    // We validate for errors but keep `params` as the source of truth rather than
+    // swapping to the parsed result, so a handler never loses a field that an
+    // incomplete schema happens to omit. health_check takes no args and is absent.
+    const schema = TOOL_SCHEMAS[name];
+    if (schema) {
+      validateInput(schema, params, name);
+    }
+
     switch (name) {
       case 'search_works': {
-        const { searchWorksSchema } = await import('./validation.js');
-        const validated = validateInput(searchWorksSchema, params, 'search_works');
-        const filter = buildFilter(validated);
-        const { search, filterAdditions } = applySearchField(validated.query, validated.search_field, validated.exact_phrase);
+        const filter = buildFilter(params);
+        const { search, filterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
         if (filterAdditions) Object.assign(filter, filterAdditions);
         const options: SearchOptions = {
           search,
           filter,
-          sort: validated.sort,
-          page: validated.page || 1,
-          perPage: validated.per_page || DEFAULT_PAGE_SIZE,
+          sort: params.sort,
+          page: params.page || 1,
+          perPage: params.per_page || DEFAULT_PAGE_SIZE,
         };
         const results = await openAlexClient.getWorks(options);
         const summary = summarizeWorksList(results);
@@ -1403,7 +1410,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(results, null, 2),
+              text: JSON.stringify({
+                meta: { count: results.meta?.count, page: results.meta?.page, per_page: results.meta?.per_page },
+                results: results.results.map(summarizeInstitution),
+              }, null, 2),
             },
           ],
         };
@@ -1413,17 +1423,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const filter = buildFilter(params);
         const { search, filterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
         if (filterAdditions) Object.assign(filter, filterAdditions);
-        const options: SearchOptions = {
+        const results = await openAlexClient.getWorks({
           search,
           filter,
           groupBy: 'publication_year',
-        };
-        const results = await openAlexClient.getWorks(options);
+        });
+
+        // group_by mode returns an empty results[] plus a group_by[] of {key, count}.
+        // Return a compact year→count trend sorted chronologically instead of the raw dump.
+        const trend = (results.group_by || [])
+          .map((g: any) => ({ year: Number(g.key), works_count: g.count }))
+          .sort((a: any, b: any) => a.year - b.year);
+
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(results, null, 2),
+              text: JSON.stringify({
+                query: params.query,
+                total_works: results.meta?.count ?? null,
+                trend,
+              }, null, 2),
             },
           ],
         };
@@ -1461,23 +1481,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const currentYear = new Date().getFullYear();
         const yearsBack = params.time_period_years || 3;
         const fromYear = currentYear - yearsBack;
+        const minWorks = params.min_works !== undefined ? params.min_works : 100;
+        const limit = params.per_page || DEFAULT_PAGE_SIZE;
 
         const filter: FilterOptions = {
           'publication_year': `>${fromYear - 1}`,
         };
 
-        const options: SearchOptions = {
+        // group_by returns every topic bucket (up to 200); filter by the documented
+        // min_works threshold, rank by volume, and trim to the requested page size.
+        const results = await openAlexClient.getWorks({
           filter,
           groupBy: 'topics.id',
-          perPage: params.per_page || DEFAULT_PAGE_SIZE,
-        };
+        });
 
-        const results = await openAlexClient.getWorks(options);
+        const trending = (results.group_by || [])
+          .filter((g: any) => g.count >= minWorks)
+          .sort((a: any, b: any) => b.count - a.count)
+          .slice(0, limit)
+          .map((g: any) => ({
+            topic_id: g.key,
+            topic: g.key_display_name,
+            works_count: g.count,
+          }));
+
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(results, null, 2),
+              text: JSON.stringify({
+                time_period: `${fromYear}-${currentYear}`,
+                min_works: minWorks,
+                count: trending.length,
+                trending_topics: trending,
+              }, null, 2),
             },
           ],
         };
@@ -1487,17 +1524,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const filter = buildFilter(params);
         const { search, filterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
         if (filterAdditions) Object.assign(filter, filterAdditions);
-        const options: SearchOptions = {
+        const results = await openAlexClient.getWorks({
           search,
           filter,
           groupBy: 'institutions.country_code',
-        };
-        const results = await openAlexClient.getWorks(options);
+        });
+
+        const byCountry = (results.group_by || [])
+          .map((g: any) => ({
+            country_code: g.key,
+            country: g.key_display_name,
+            works_count: g.count,
+          }))
+          .sort((a: any, b: any) => b.works_count - a.works_count);
+
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(results, null, 2),
+              text: JSON.stringify({
+                query: params.query,
+                total_works: results.meta?.count ?? null,
+                by_country: byCountry,
+              }, null, 2),
             },
           ],
         };
@@ -1942,6 +1991,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               type: 'text',
               text: JSON.stringify({
                 status: 'healthy',
+                version: VERSION,
                 timestamp: new Date().toISOString(),
                 api: {
                   baseUrl: CONFIG.API.BASE_URL,

@@ -1,3 +1,12 @@
+import { createRequire } from 'node:module';
+
+// Read the package version at runtime so the server's advertised version never
+// drifts from package.json. createRequire resolves relative to this module's
+// location (build/config.js → ../package.json = package root), and npm always
+// ships package.json with the package, so this works both locally and installed.
+const require = createRequire(import.meta.url);
+export const VERSION: string = (require('../package.json') as { version: string }).version;
+
 // Debug logging gated on OPENALEX_DEBUG env var (stderr is safe for MCP stdio servers)
 const DEBUG_ENABLED = process.env.OPENALEX_DEBUG === '1' || process.env.OPENALEX_DEBUG === 'true';
 export function debug(...args: unknown[]): void {

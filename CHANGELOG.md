@@ -2,6 +2,24 @@
 
 All notable changes to the OpenAlex MCP Server will be documented in this file.
 
+## [0.5.0] - 2026-06-22
+
+### Added
+- **Universal input validation**: every argument-taking tool (30) now validates its input against a Zod schema before execution, via a central `TOOL_SCHEMAS` map. Previously only `search_works` was validated — the other 29 tools accepted unvalidated input and 11 had no schema at all. Invalid input (wrong types, missing required fields, bad enum values) now returns a clear `Validation error: …` message instead of a cryptic downstream API error or silent misbehavior.
+- **`summarizeInstitution`**: `search_institutions` now returns compact summaries (id, name, ROR, country, type, h-index, i10-index, 2yr mean citedness, geo, top topics, associated institutions) instead of raw OpenAlex institution objects, which carried multi-KB `x_concepts` / `counts_by_year` / `international` payloads per result. Large reduction in response size for MCP clients.
+- `health_check` now reports the server `version`.
+
+### Fixed
+- **`get_trending_topics` silently ignored its `min_works` parameter**: the documented threshold (default 100) was never applied — the tool returned the raw grouped response (including an empty `results: []`). It now filters topics by `min_works`, ranks by volume, trims to `per_page`, and returns a labeled `trending_topics` list with the time period and threshold echoed.
+- **Server version drift**: the MCP server advertised a hardcoded `0.4.0` while `package.json` was `0.4.1`. The version is now read from `package.json` at runtime (`config.ts` `VERSION`) so it can never drift again; a regression test enforces the match.
+
+### Changed
+- **Cleaner grouped responses**: `analyze_topic_trends` returns a chronological `trend` array (`{year, works_count}`) plus `total_works`; `analyze_geographic_distribution` returns a `by_country` array (`{country_code, country, works_count}`) sorted by volume plus `total_works` — instead of the raw API response with an empty `results[]`.
+- Completed the `search_by_topic` and `get_top_cited_works` validation schemas to include the institution/source filter parameters their handlers already supported.
+
+### Tests
+- 83 tests (up from 65): added `tests/version.test.ts`, `tests/tool-schemas.test.ts`, `tests/formatters.test.ts`.
+
 ## [0.4.1] - 2026-04-01
 
 ### Fixed

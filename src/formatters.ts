@@ -93,6 +93,32 @@ export function summarizeSource(source: any) {
   };
 }
 
+export function summarizeInstitution(inst: any) {
+  return {
+    id: inst.id,
+    display_name: inst.display_name,
+    ror: inst.ror,
+    country_code: inst.country_code,
+    type: inst.type,
+    homepage_url: inst.homepage_url,
+    works_count: inst.works_count,
+    cited_by_count: inst.cited_by_count,
+    h_index: inst.summary_stats?.h_index ?? null,
+    i10_index: inst.summary_stats?.i10_index ?? null,
+    two_year_mean_citedness: inst.summary_stats?.['2yr_mean_citedness'] ?? null,
+    geo: inst.geo ? {
+      city: inst.geo.city,
+      region: inst.geo.region,
+      country: inst.geo.country,
+    } : null,
+    associated_institutions: inst.associated_institutions?.slice(0, 3).map((a: any) => ({
+      display_name: a.display_name,
+      relationship: a.relationship,
+    })) || [],
+    top_topics: inst.topics?.slice(0, 4).map((t: any) => t.display_name) || [],
+  };
+}
+
 export function summarizeWorksList(response: any) {
   return {
     meta: {
