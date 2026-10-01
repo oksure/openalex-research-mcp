@@ -12,6 +12,23 @@ export interface FilterOptions {
   [key: string]: string | number | boolean;
 }
 
+/**
+ * Extract the bare W-ID from an OpenAlex work identifier or response ID.
+ */
+export function extractOpenAlexWorkId(id: unknown): string {
+  if (typeof id !== 'string') {
+    throw new Error('OpenAlex work response did not include an id');
+  }
+
+  const trimmed = id.trim().replace(/\/+$/, '');
+  const workId = trimmed.split('/').pop();
+  if (!workId || !/^W\d+$/.test(workId)) {
+    throw new Error(`Invalid OpenAlex work ID: ${id}`);
+  }
+
+  return workId;
+}
+
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -372,6 +389,19 @@ export class OpenAlexClient {
    */
   async getWork(id: string): Promise<any> {
     return this.getEntity('works', id);
+  }
+
+  /**
+   * Resolve a work identifier to the bare W-ID required by citation filters.
+   */
+  async getWorkId(id: string): Promise<string> {
+    const candidate = id.trim().replace(/\/+$/, '').split('/').pop();
+    if (candidate && /^W\d+$/.test(candidate)) {
+      return candidate;
+    }
+
+    const work = await this.getWork(id);
+    return extractOpenAlexWorkId(work?.id);
   }
 
   /**

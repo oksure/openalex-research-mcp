@@ -7,7 +7,9 @@ import {
   ListToolsRequestSchema,
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import { OpenAlexClient, FilterOptions, SearchOptions } from './openalex-client.js';
+import {
+  OpenAlexClient, FilterOptions, SearchOptions, extractOpenAlexWorkId,
+} from './openalex-client.js';
 import { z } from 'zod';
 import { CONFIG, VERSION, debug } from './config.js';
 import { validateInput, TOOL_SCHEMAS } from './validation.js';
@@ -19,6 +21,9 @@ import {
 } from './formatters.js';
 import { buildFilter } from './filter.js';
 import { wrapPhraseSearch, applySearchField } from './search-helpers.js';
+import {
+  isOpenAlexAuthorId, normalizeOpenAlexAuthorId, sameOpenAlexAuthorId,
+} from './author-ids.js';
 
 // Handle `openalex-research-mcp setup [flags]` before starting the MCP server
 if (process.argv[2] === 'setup') {
@@ -1184,8 +1189,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_work_citations': {
+        const workId = await openAlexClient.getWorkId(params.id);
         const filter: FilterOptions = {
-          'cites': params.id,
+          'cites': workId,
         };
         const options: SearchOptions = {
           filter,
@@ -1224,11 +1230,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_citation_network': {
         const work = await openAlexClient.getWork(params.id);
+        const workId = extractOpenAlexWorkId(work.id);
         const maxCiting = params.max_citing || 50;
         const maxReferences = params.max_references || 50;
 
         // Get citing works
-        const citingFilter: FilterOptions = { 'cites': params.id };
+        const citingFilter: FilterOptions = { 'cites': workId };
         const citingResults = await openAlexClient.getWorks({
           filter: citingFilter,
           perPage: maxCiting,
@@ -1347,9 +1354,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_author_collaborators': {
+        const inputAuthorId = params.author_id.trim();
+        let authorId = inputAuthorId;
+        if (isOpenAlexAuthorId(inputAuthorId)) {
+          authorId = normalizeOpenAlexAuthorId(inputAuthorId);
+        } else {
+          const author = await openAlexClient.getAuthor(inputAuthorId);
+          if (!author?.id) {
+            throw new Error(`Unable to resolve author ID: ${inputAuthorId}`);
+          }
+          authorId = normalizeOpenAlexAuthorId(author.id);
+        }
+
         // Paginate through author's works to handle prolific authors
         const authorFilter: FilterOptions = {
-          'authorships.author.id': params.author_id,
+          'authorships.author.id': authorId,
         };
         const pageSize = CONFIG.MCP.MAX_PAGE_SIZE; // 200
         let allWorks: any[] = [];
@@ -1375,7 +1394,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (work.authorships) {
             for (const authorship of work.authorships) {
               const coauthorId = authorship.author?.id;
-              if (coauthorId && coauthorId !== params.author_id) {
+              if (coauthorId && !sameOpenAlexAuthorId(coauthorId, authorId)) {
                 if (!collaboratorCounts[coauthorId]) {
                   collaboratorCounts[coauthorId] = {
                     count: 0,

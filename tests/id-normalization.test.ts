@@ -90,4 +90,27 @@ describe('OpenAlexClient ID normalization', () => {
       expect.any(Object)
     );
   });
+
+  it('should resolve a DOI to the bare W-ID required by citation filters', async () => {
+    const mockGet = vi.fn().mockResolvedValue({
+      data: { id: 'https://openalex.org/W12345' },
+    });
+    vi.mocked(axios.create).mockReturnValue(createMockAxios(mockGet) as any);
+
+    const client = new OpenAlexClient({ enableCache: false });
+    await expect(client.getWorkId('10.48550/arXiv.2403.13093')).resolves.toBe('W12345');
+    expect(mockGet).toHaveBeenCalledWith(
+      '/works/doi:10.48550/arXiv.2403.13093',
+      expect.any(Object)
+    );
+  });
+
+  it('should reuse an existing W-ID without an API lookup', async () => {
+    const mockGet = vi.fn();
+    vi.mocked(axios.create).mockReturnValue(createMockAxios(mockGet) as any);
+
+    const client = new OpenAlexClient({ enableCache: false });
+    await expect(client.getWorkId('https://openalex.org/W12345/')).resolves.toBe('W12345');
+    expect(mockGet).not.toHaveBeenCalled();
+  });
 });
