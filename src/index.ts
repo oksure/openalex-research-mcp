@@ -22,7 +22,8 @@ import {
 import { buildFilter } from './filter.js';
 import { wrapPhraseSearch, applySearchField } from './search-helpers.js';
 import {
-  isOpenAlexAuthorId, normalizeOpenAlexAuthorId, sameOpenAlexAuthorId,
+  isOpenAlexAuthorId, normalizeOpenAlexAuthorId, normalizeOpenAlexAuthorLookupId,
+  sameOpenAlexAuthorId,
 } from './author-ids.js';
 
 // Handle `openalex-research-mcp setup [flags]` before starting the MCP server
@@ -1359,7 +1360,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (isOpenAlexAuthorId(inputAuthorId)) {
           authorId = normalizeOpenAlexAuthorId(inputAuthorId);
         } else {
-          const author = await openAlexClient.getAuthor(inputAuthorId);
+          const authorLookupId = normalizeOpenAlexAuthorLookupId(inputAuthorId);
+          const author = await openAlexClient.getAuthor(authorLookupId);
           if (!author?.id) {
             throw new Error(`Unable to resolve author ID: ${inputAuthorId}`);
           }

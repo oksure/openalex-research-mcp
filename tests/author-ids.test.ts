@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isOpenAlexAuthorId,
   normalizeOpenAlexAuthorId,
+  normalizeOpenAlexAuthorLookupId,
   sameOpenAlexAuthorId,
 } from '../src/author-ids.js';
 
@@ -21,6 +22,13 @@ describe('OpenAlex author ID normalization', () => {
   it('recognizes OpenAlex IDs but not ORCIDs', () => {
     expect(isOpenAlexAuthorId('A5033043101')).toBe(true);
     expect(isOpenAlexAuthorId('https://orcid.org/0000-0002-4189-3154')).toBe(false);
+  });
+
+  it('prefixes bare ORCIDs for OpenAlex author lookup', () => {
+    expect(normalizeOpenAlexAuthorLookupId(' 0000-0002-4189-3154 '))
+      .toBe('orcid:0000-0002-4189-3154');
+    expect(normalizeOpenAlexAuthorLookupId('https://orcid.org/0000-0002-4189-3154'))
+      .toBe('https://orcid.org/0000-0002-4189-3154');
   });
 
   it('does not equate different authors', () => {
