@@ -1,7 +1,7 @@
 // buildFilter — maps MCP tool parameters to OpenAlex API filter format.
 // Exported so it can be unit-tested directly.
 
-import { FilterOptions } from './openalex-client.js';
+import { FilterOptions, VENUE_NAME_FILTER } from './openalex-client.js';
 import { INSTITUTION_GROUPS } from './presets.js';
 import { debug } from './config.js';
 
@@ -50,7 +50,7 @@ export function buildFilter(params: any): FilterOptions {
     filter['primary_location.source.id'] = params.source_id;
   }
   if (params.source_name) {
-    filter['primary_location.source.display_name.search'] = params.source_name;
+    filter[VENUE_NAME_FILTER] = params.source_name;
   }
   if (params.source_issn) {
     filter['primary_location.source.issn'] = params.source_issn;

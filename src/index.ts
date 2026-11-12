@@ -8,7 +8,7 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import {
-  OpenAlexClient, FilterOptions, SearchOptions, extractOpenAlexWorkId,
+  OpenAlexClient, FilterOptions, SearchOptions, extractOpenAlexWorkId, VENUE_NAME_FILTER,
 } from './openalex-client.js';
 import { z } from 'zod';
 import { CONFIG, VERSION, debug } from './config.js';
@@ -1686,8 +1686,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           // Journals: filter by ISSN (reliable, exact match with OR)
           filter['primary_location.source.issn'] = preset.issns.join('|');
         } else if (preset.source_names && preset.source_names.length > 0) {
-          // Conferences: filter by display_name search (fuzzy match for long names)
-          filter['primary_location.source.display_name.search'] = preset.source_names.join('|');
+          // Conferences: venue names, which the client resolves to OpenAlex source IDs
+          filter[VENUE_NAME_FILTER] = preset.source_names.join('|');
         }
 
         // ── Institution filter ────────────────────────────────────────────
@@ -1752,7 +1752,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         } else if (params.venue_issn) {
           filter['primary_location.source.issn'] = params.venue_issn;
         } else if (params.venue_name) {
-          filter['primary_location.source.display_name.search'] = params.venue_name;
+          filter[VENUE_NAME_FILTER] = params.venue_name;
         }
 
         // Year range
@@ -1932,7 +1932,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'find_review_articles': {
         const filter: FilterOptions = { 'type': 'review' };
         if (params.source_name) {
-          filter['primary_location.source.display_name.search'] = params.source_name;
+          filter[VENUE_NAME_FILTER] = params.source_name;
         }
         if (params.from_year && params.to_year) {
           filter['publication_year'] = `${params.from_year}-${params.to_year}`;
@@ -1969,7 +1969,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
         if (minCit > 0) filter['cited_by_count'] = `>${minCit - 1}`;
         if (params.source_name) {
-          filter['primary_location.source.display_name.search'] = params.source_name;
+          filter[VENUE_NAME_FILTER] = params.source_name;
         }
 
         const { search: seminalSearch, filterAdditions: seminalFilterAdditions } = applySearchField(params.query, params.search_field, params.exact_phrase);
@@ -2013,7 +2013,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'find_open_access_version': {
         const filter: FilterOptions = { 'is_oa': true };
         if (params.source_name) {
-          filter['primary_location.source.display_name.search'] = params.source_name;
+          filter[VENUE_NAME_FILTER] = params.source_name;
         }
         if (params.from_year) filter['publication_year'] = `>${params.from_year - 1}`;
         if (params.min_citations !== undefined && params.min_citations > 0) {

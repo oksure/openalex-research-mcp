@@ -13,6 +13,36 @@ export interface FilterOptions {
 }
 
 /**
+ * Filter key for a venue given by name ("Research Policy", "NeurIPS"; several names joined with
+ * "|"). OpenAlex has no free-text filter on a work's source name: requesting
+ * `primary_location.source.display_name.search` answers HTTP 400. So this key never reaches
+ * the API: before a works request the client resolves each name to OpenAlex source IDs (exact
+ * name, abbreviation or alternate title first; otherwise sources whose name contains it; otherwise
+ * the top match) and filters on `primary_location.source.id` instead.
+ */
+export const VENUE_NAME_FILTER = 'primary_location.source.display_name.search';
+
+const SOURCE_ID_FILTER = 'primary_location.source.id';
+const MAX_SOURCES_PER_NAME = 10;
+
+/** The source IDs that a venue name stands for, from a /sources search result page. */
+export function matchSourceIds(name: string, sources: any[]): string[] {
+  const wanted = name.trim().toLowerCase();
+  const titles = (s: any): string[] =>
+    [s?.display_name, s?.abbreviated_title, ...(Array.isArray(s?.alternate_titles) ? s.alternate_titles : [])]
+      .filter((t): t is string => typeof t === 'string')
+      .map((t) => t.trim().toLowerCase());
+  const shortId = (s: any): string => String(s.id).split('/').pop() as string;
+  const valid = sources.filter((s) => typeof s?.id === 'string');
+
+  const exact = valid.filter((s) => titles(s).includes(wanted));
+  if (exact.length > 0) return exact.map(shortId);
+  const containing = valid.filter((s) => titles(s).some((t) => t.includes(wanted)));
+  if (containing.length > 0) return containing.slice(0, MAX_SOURCES_PER_NAME).map(shortId);
+  return valid.length > 0 ? [shortId(valid[0])] : [];
+}
+
+/**
  * Extract the bare W-ID from an OpenAlex work identifier or response ID.
  */
 export function extractOpenAlexWorkId(id: unknown): string {
@@ -311,6 +341,9 @@ export class OpenAlexClient {
     entityType: string,
     options: SearchOptions = {}
   ): Promise<OpenAlexResponse<T>> {
+    if (entityType === 'works' && options.filter && options.filter[VENUE_NAME_FILTER] !== undefined) {
+      options = await this.resolveVenueNames(options);
+    }
     const params = this.buildQueryParams(options);
     const cacheKey = `${entityType}?${JSON.stringify(params)}`;
 
@@ -332,6 +365,42 @@ export class OpenAlexClient {
     }
 
     return result;
+  }
+
+  /**
+   * Replace a VENUE_NAME_FILTER by the OpenAlex source IDs its names stand for. A source ID
+   * filter given as well is the more precise one and is kept as it is. A name that matches no
+   * source is an error, rather than a silently empty or unfiltered result.
+   */
+  private async resolveVenueNames(options: SearchOptions): Promise<SearchOptions> {
+    const filter: FilterOptions = { ...options.filter };
+    const names = String(filter[VENUE_NAME_FILTER])
+      .split('|')
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0);
+    delete filter[VENUE_NAME_FILTER];
+
+    if (filter[SOURCE_ID_FILTER] === undefined && names.length > 0) {
+      const ids: string[] = [];
+      for (const name of names) {
+        const page = await this.searchEntities('sources', {
+          search: name,
+          perPage: MAX_SOURCES_PER_NAME,
+          select: ['id', 'display_name', 'abbreviated_title', 'alternate_titles'],
+        });
+        const matched = matchSourceIds(name, page.results ?? []);
+        if (matched.length === 0) {
+          throw new Error(
+            `No OpenAlex source matches the venue name "${name}". ` +
+            'Pass the ISSN (source_issn / venue_issn) or the OpenAlex source ID instead.'
+          );
+        }
+        debug(`venue name "${name}" -> ${matched.join('|')}`);
+        ids.push(...matched);
+      }
+      filter[SOURCE_ID_FILTER] = [...new Set(ids)].join('|');
+    }
+    return { ...options, filter };
   }
 
   /**
