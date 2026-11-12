@@ -21,10 +21,7 @@ import {
 } from './formatters.js';
 import { buildFilter } from './filter.js';
 import { wrapPhraseSearch, applySearchField } from './search-helpers.js';
-import {
-  isOpenAlexAuthorId, normalizeOpenAlexAuthorId, normalizeOpenAlexAuthorLookupId,
-  sameOpenAlexAuthorId,
-} from './author-ids.js';
+import { getAuthorCollaborators, getAuthorProfile, getAuthorWorks } from './author-tools.js';
 
 // Handle `openalex-research-mcp setup [flags]` before starting the MCP server
 if (process.argv[2] === 'setup') {
@@ -1325,109 +1322,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_author_works': {
-        const filter: FilterOptions = {
-          'authorships.author.id': params.author_id,
-        };
-        // Use correct publication_year filter (NOT from_publication_date)
-        if (params.from_year && params.to_year) {
-          filter['publication_year'] = `${params.from_year}-${params.to_year}`;
-        } else if (params.from_year) {
-          filter['publication_year'] = `>${params.from_year - 1}`;
-        } else if (params.to_year) {
-          filter['publication_year'] = `<${params.to_year + 1}`;
-        }
-
-        const options: SearchOptions = {
-          filter,
-          sort: params.sort,
-          perPage: params.per_page || DEFAULT_PAGE_SIZE,
-        };
-        const results = await openAlexClient.getWorks(options);
-        const summary = summarizeWorksList(results);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(summary, null, 2),
-            },
-          ],
-        };
+        return { content: [{ type: 'text', text: JSON.stringify(await getAuthorWorks(openAlexClient, params, DEFAULT_PAGE_SIZE), null, 2) }] };
       }
 
       case 'get_author_collaborators': {
-        const inputAuthorId = params.author_id.trim();
-        let authorId = inputAuthorId;
-        if (isOpenAlexAuthorId(inputAuthorId)) {
-          authorId = normalizeOpenAlexAuthorId(inputAuthorId);
-        } else {
-          const authorLookupId = normalizeOpenAlexAuthorLookupId(inputAuthorId);
-          const author = await openAlexClient.getAuthor(authorLookupId);
-          if (!author?.id) {
-            throw new Error(`Unable to resolve author ID: ${inputAuthorId}`);
-          }
-          authorId = normalizeOpenAlexAuthorId(author.id);
-        }
-
-        // Paginate through author's works to handle prolific authors
-        const authorFilter: FilterOptions = {
-          'authorships.author.id': authorId,
-        };
-        const pageSize = CONFIG.MCP.MAX_PAGE_SIZE; // 200
-        let allWorks: any[] = [];
-        let page = 1;
-        const maxPages = 5; // Cap at 1000 works to avoid excessive API calls
-
-        while (page <= maxPages) {
-          const batch = await openAlexClient.getWorks({
-            filter: authorFilter,
-            perPage: pageSize,
-            page,
-            select: ['id', 'authorships'],
-          });
-          allWorks = allWorks.concat(batch.results);
-          if (allWorks.length >= batch.meta.count || batch.results.length < pageSize) break;
-          page++;
-        }
-
-        // Count collaborators
-        const collaboratorCounts: { [key: string]: { count: number; name: string; id: string } } = {};
-
-        for (const work of allWorks) {
-          if (work.authorships) {
-            for (const authorship of work.authorships) {
-              const coauthorId = authorship.author?.id;
-              if (coauthorId && !sameOpenAlexAuthorId(coauthorId, authorId)) {
-                if (!collaboratorCounts[coauthorId]) {
-                  collaboratorCounts[coauthorId] = {
-                    count: 0,
-                    name: authorship.author?.display_name || 'Unknown',
-                    id: coauthorId,
-                  };
-                }
-                collaboratorCounts[coauthorId].count++;
-              }
-            }
-          }
-        }
-
-        // Filter and sort
-        const minCollabs = params.min_collaborations || 1;
-        const collaborators = Object.values(collaboratorCounts)
-          .filter(c => c.count >= minCollabs)
-          .sort((a, b) => b.count - a.count);
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                author_id: params.author_id,
-                total_works_analyzed: allWorks.length,
-                collaborators,
-              }, null, 2),
-            },
-          ],
-        };
+        return { content: [{ type: 'text', text: JSON.stringify(await getAuthorCollaborators(openAlexClient, params, CONFIG.MCP.MAX_PAGE_SIZE), null, 2) }] };
       }
 
       case 'search_institutions': {
@@ -1849,38 +1748,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_author_profile': {
-        const author = await openAlexClient.getAuthor(params.author_id);
-        const topWorksCount = params.top_works_count || 5;
-        const recentWorksCount = params.recent_works_count || 5;
-
-        // Fetch top-cited works
-        const topWorksResult = await openAlexClient.getWorks({
-          filter: { 'authorships.author.id': params.author_id },
-          sort: 'cited_by_count:desc',
-          perPage: topWorksCount,
-        });
-
-        // Fetch recent works
-        const recentWorksResult = await openAlexClient.getWorks({
-          filter: { 'authorships.author.id': params.author_id },
-          sort: 'publication_year:desc',
-          perPage: recentWorksCount,
-        });
-
-        const profile = {
-          ...summarizeAuthor(author),
-          top_cited_works: topWorksResult.results.map(summarizeWork),
-          recent_works: recentWorksResult.results.map(summarizeWork),
-          // Full affiliations history
-          affiliations: author.affiliations?.map((a: any) => ({
-            institution: a.institution?.display_name,
-            country: a.institution?.country_code,
-            years: a.years
-          })) || [],
-        };
-        return {
-          content: [{ type: 'text', text: JSON.stringify(profile, null, 2) }],
-        };
+        return { content: [{ type: 'text', text: JSON.stringify(await getAuthorProfile(openAlexClient, params), null, 2) }] };
       }
 
       case 'search_authors_by_expertise': {
