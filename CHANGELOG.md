@@ -5,6 +5,7 @@ All notable changes to the OpenAlex MCP Server will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Venue-name filters now resolve source names to OpenAlex source IDs before searching works. Blank or unmatched names fail rather than silently returning unfiltered or unrelated results; use an ISSN or source ID when a name cannot be resolved.
 - **`search_authors_by_expertise` now finds topic experts, not name matches.** It passed the query to the authors `search=` param, which matches author *display names* — so "machine learning" returned authors named like the query (often 1-work accounts) instead of ML researchers. It now resolves the topic string to a `topics.id` and filters authors by it (sorted by h-index), returning actual field leaders (e.g. "CRISPR gene editing" → George Church, Rudolf Jaenisch). The resolved topic is echoed in `meta.resolved_topic` for transparency; falls back to name search if no topic matches.
 
 ### Changed

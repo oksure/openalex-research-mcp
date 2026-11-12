@@ -12,6 +12,25 @@ export interface FilterOptions {
   [key: string]: string | number | boolean;
 }
 
+// This internal marker is resolved to source IDs before it reaches OpenAlex.
+export const VENUE_NAME_FILTER = 'primary_location.source.display_name.search';
+const SOURCE_ID_FILTER = 'primary_location.source.id';
+const MAX_SOURCES_PER_NAME = 10;
+
+export function matchSourceIds(name: string, sources: any[]): string[] {
+  const wanted = name.trim().toLowerCase();
+  if (!wanted) return [];
+  const titles = (s: any): string[] =>
+    [s?.display_name, s?.abbreviated_title, ...(Array.isArray(s?.alternate_titles) ? s.alternate_titles : [])]
+      .filter((t): t is string => typeof t === 'string')
+      .map((t) => t.trim().toLowerCase());
+  const valid = sources.filter((s) => typeof s?.id === 'string' && /^S\d+$/.test(s.id.split('/').pop()));
+  const ids = (matches: any[]) => matches.map((s) => s.id.split('/').pop() as string);
+  const exact = valid.filter((s) => titles(s).includes(wanted));
+  if (exact.length) return ids(exact);
+  return ids(valid.filter((s) => titles(s).some((t) => t.includes(wanted))).slice(0, MAX_SOURCES_PER_NAME));
+}
+
 /**
  * Extract the bare W-ID from an OpenAlex work identifier or response ID.
  */
@@ -311,6 +330,9 @@ export class OpenAlexClient {
     entityType: string,
     options: SearchOptions = {}
   ): Promise<OpenAlexResponse<T>> {
+    if (entityType === 'works' && options.filter && options.filter[VENUE_NAME_FILTER] !== undefined) {
+      options = await this.resolveVenueNames(options);
+    }
     const params = this.buildQueryParams(options);
     const cacheKey = `${entityType}?${JSON.stringify(params)}`;
 
@@ -332,6 +354,30 @@ export class OpenAlexClient {
     }
 
     return result;
+  }
+
+  private async resolveVenueNames(options: SearchOptions): Promise<SearchOptions> {
+    const filter: FilterOptions = { ...options.filter };
+    const names = String(filter[VENUE_NAME_FILTER]).split('|').map((n) => n.trim()).filter(Boolean);
+    delete filter[VENUE_NAME_FILTER];
+    if (filter[SOURCE_ID_FILTER] === undefined) {
+      if (!names.length) throw new Error('Venue name must not be blank.');
+      const ids: string[] = [];
+      for (const name of names) {
+        const page = await this.searchEntities('sources', {
+          search: name,
+          perPage: MAX_SOURCES_PER_NAME,
+          select: ['id', 'display_name', 'abbreviated_title', 'alternate_titles'],
+        });
+        const matched = matchSourceIds(name, page.results ?? []);
+        if (!matched.length) {
+          throw new Error(`No OpenAlex source matches the venue name "${name}". Pass an ISSN or source ID instead.`);
+        }
+        ids.push(...matched);
+      }
+      filter[SOURCE_ID_FILTER] = [...new Set(ids)].join('|');
+    }
+    return { ...options, filter };
   }
 
   /**
