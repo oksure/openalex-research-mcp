@@ -41,6 +41,24 @@ debug('API Key:', process.env.OPENALEX_API_KEY ? 'Set' : 'Not set');
 // Initialize OpenAlex client
 const openAlexClient = new OpenAlexClient();
 
+/**
+ * The bare OpenAlex author ID (A123) for an author_id parameter, and the author record when a
+ * lookup was needed. An OpenAlex ID or URL is used as it is; an ORCID (bare or URL) or any other
+ * identifier goes through an author lookup, because the works filter authorships.author.id
+ * accepts OpenAlex IDs only.
+ */
+async function resolveAuthorId(input: string): Promise<{ id: string; author?: any }> {
+  const value = input.trim();
+  if (isOpenAlexAuthorId(value)) {
+    return { id: normalizeOpenAlexAuthorId(value) };
+  }
+  const author = await openAlexClient.getAuthor(normalizeOpenAlexAuthorLookupId(value));
+  if (!author?.id) {
+    throw new Error(`Unable to resolve author ID: ${input}`);
+  }
+  return { id: normalizeOpenAlexAuthorId(author.id), author };
+}
+
 // Default page size for MCP clients (can be overridden with MCP_DEFAULT_PAGE_SIZE env var)
 const DEFAULT_PAGE_SIZE = parseInt(process.env.MCP_DEFAULT_PAGE_SIZE || String(CONFIG.MCP.DEFAULT_PAGE_SIZE), 10);
 
@@ -1325,8 +1343,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_author_works': {
+        const { id: authorId } = await resolveAuthorId(params.author_id);
         const filter: FilterOptions = {
-          'authorships.author.id': params.author_id,
+          'authorships.author.id': authorId,
         };
         // Use correct publication_year filter (NOT from_publication_date)
         if (params.from_year && params.to_year) {
@@ -1355,18 +1374,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_author_collaborators': {
-        const inputAuthorId = params.author_id.trim();
-        let authorId = inputAuthorId;
-        if (isOpenAlexAuthorId(inputAuthorId)) {
-          authorId = normalizeOpenAlexAuthorId(inputAuthorId);
-        } else {
-          const authorLookupId = normalizeOpenAlexAuthorLookupId(inputAuthorId);
-          const author = await openAlexClient.getAuthor(authorLookupId);
-          if (!author?.id) {
-            throw new Error(`Unable to resolve author ID: ${inputAuthorId}`);
-          }
-          authorId = normalizeOpenAlexAuthorId(author.id);
-        }
+        const { id: authorId } = await resolveAuthorId(params.author_id);
 
         // Paginate through author's works to handle prolific authors
         const authorFilter: FilterOptions = {
@@ -1849,20 +1857,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_author_profile': {
-        const author = await openAlexClient.getAuthor(params.author_id);
+        const resolved = await resolveAuthorId(params.author_id);
+        const authorId = resolved.id;
+        const author = resolved.author ?? await openAlexClient.getAuthor(authorId);
         const topWorksCount = params.top_works_count || 5;
         const recentWorksCount = params.recent_works_count || 5;
 
         // Fetch top-cited works
         const topWorksResult = await openAlexClient.getWorks({
-          filter: { 'authorships.author.id': params.author_id },
+          filter: { 'authorships.author.id': authorId },
           sort: 'cited_by_count:desc',
           perPage: topWorksCount,
         });
 
         // Fetch recent works
         const recentWorksResult = await openAlexClient.getWorks({
-          filter: { 'authorships.author.id': params.author_id },
+          filter: { 'authorships.author.id': authorId },
           sort: 'publication_year:desc',
           perPage: recentWorksCount,
         });
