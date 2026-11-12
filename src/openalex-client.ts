@@ -1,9 +1,14 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { CONFIG, debug } from './config.js';
+import { ApiKeyPool, PooledKey, collectApiKeys, isBudgetExhausted } from './key-pool.js';
 
 export interface OpenAlexConfig {
   email?: string;
   apiKey?: string;
+  /** Further keys, separated by commas, semicolons or blanks (OPENALEX_API_KEYS). */
+  apiKeys?: string;
+  /** Text file of further keys, one per line (OPENALEX_API_KEYS_FILE). */
+  apiKeysFile?: string;
   baseUrl?: string;
   enableCache?: boolean;
 }
@@ -101,13 +106,18 @@ export interface OpenAlexResponse<T> {
 export class OpenAlexClient {
   private client: AxiosInstance;
   private email?: string;
-  private apiKey?: string;
+  /** The configured API keys, used one at a time; empty for anonymous access. */
+  private keys: ApiKeyPool;
   private cache: SimpleCache<any>;
   private enableCache: boolean;
 
   constructor(config: OpenAlexConfig = {}) {
     this.email = config.email || process.env.OPENALEX_EMAIL;
-    this.apiKey = config.apiKey || process.env.OPENALEX_API_KEY;
+    this.keys = new ApiKeyPool(collectApiKeys({
+      apiKey: config.apiKey || process.env.OPENALEX_API_KEY,
+      apiKeys: config.apiKeys || process.env.OPENALEX_API_KEYS,
+      apiKeysFile: config.apiKeysFile || process.env.OPENALEX_API_KEYS_FILE,
+    }));
     this.enableCache = config.enableCache ?? true;
 
     const baseUrl = config.baseUrl || CONFIG.API.BASE_URL;
@@ -128,7 +138,9 @@ export class OpenAlexClient {
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
-        if (error.response?.status === 429 && error.config) {
+        // A spent daily budget does not come back in seconds: leave it to retryWithBackoff,
+        // which moves on to the next API key.
+        if (error.response?.status === 429 && error.config && !isBudgetExhausted(error)) {
           const config = error.config as any;
           config._429RetryCount = (config._429RetryCount || 0) + 1;
           if (config._429RetryCount > CONFIG.API.RETRY.MAX_429_RETRIES) {
@@ -151,17 +163,68 @@ export class OpenAlexClient {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  /** Number of distinct API keys configured (0 for anonymous access). */
+  get apiKeyCount(): number {
+    return this.keys.size;
+  }
+
+  /** The authentication parameters of one attempt: the pool's current key, else mailto. */
+  private authParams(pooled: PooledKey | undefined): Record<string, string> {
+    if (pooled) return { api_key: pooled.key };
+    return this.email ? { mailto: this.email } : {};
+  }
+
+  /**
+   * Set the attempt's key aside when its daily budget is spent or OpenAlex refused it (401), and
+   * return the reason; undefined when the error has another cause or no other key is usable.
+   */
+  private setKeyAside(error: any, pooled: PooledKey | undefined): string | undefined {
+    if (!pooled || this.keys.size < 2) return undefined;
+    if (isBudgetExhausted(error)) {
+      return this.keys.setAsideUntilReset(pooled.key) ? 'daily budget spent' : undefined;
+    }
+    if (error?.response?.status === 401) {
+      return this.keys.setAsideForGood(pooled.key) ? 'key refused (HTTP 401)' : undefined;
+    }
+    return undefined;
+  }
+
+  /**
+   * Run `fn` with the authentication parameters of the current API key, retrying transient
+   * failures. A key whose budget is spent, or that OpenAlex refuses, is set aside and the request
+   * goes out again at once with the next key; these switches do not count as attempts.
+   */
   private async retryWithBackoff<T>(
-    fn: () => Promise<T>,
+    fn: (auth: Record<string, string>) => Promise<T>,
     context: string
   ): Promise<T> {
     let lastError: Error | null = null;
+    let switches = 0;
 
     for (let attempt = 0; attempt < CONFIG.API.RETRY.MAX_RETRIES; attempt++) {
+      const pooled = this.keys.current();
       try {
-        return await fn();
+        return await fn(this.authParams(pooled));
       } catch (error: any) {
         lastError = error instanceof Error ? error : new Error(String(error));
+
+        const reason = this.setKeyAside(error, pooled);
+        if (reason && switches < this.keys.size) {
+          switches++;
+          attempt--;
+          debug(`${context}: API key ${pooled?.position} set aside (${reason}); trying the next key`);
+          continue;
+        }
+
+        // A spent budget does not come back by retrying: fail at once, saying so.
+        if (isBudgetExhausted(error)) {
+          throw new Error(
+            this.keys.size > 1
+              ? 'OpenAlex daily budget spent on every configured API key; it refills at midnight UTC.'
+              : 'OpenAlex daily budget spent; it refills at midnight UTC. ' +
+                'Further keys can be added with OPENALEX_API_KEYS or OPENALEX_API_KEYS_FILE.'
+          );
+        }
 
         // Don't retry rate-limit exhaustion (already retried by the 429 interceptor)
         if (error?.isRateLimitExhausted) {
@@ -200,14 +263,9 @@ export class OpenAlexClient {
    * Build query parameters from search options
    */
   private buildQueryParams(options: SearchOptions = {}): Record<string, string> {
+    // Authentication (api_key or mailto) is added per attempt by retryWithBackoff, so that a
+    // retry can use the next API key and cache keys do not depend on the key in use.
     const params: Record<string, string> = {};
-
-    if (this.email && !this.apiKey) {
-      params.mailto = this.email;
-    }
-    if (this.apiKey) {
-      params.api_key = this.apiKey;
-    }
 
     if (options.search) {
       params.search = options.search;
@@ -288,10 +346,8 @@ export class OpenAlexClient {
     }
 
     const normalizedId = this.normalizeId(id);
-    const result = await this.retryWithBackoff(async () => {
-      const params: Record<string, string> = {};
-      if (this.email && !this.apiKey) params.mailto = this.email;
-      if (this.apiKey) params.api_key = this.apiKey;
+    const result = await this.retryWithBackoff(async (auth) => {
+      const params: Record<string, string> = { ...auth };
 
       const response = await this.client.get(`/${entityType}/${normalizedId}`, { params });
       return response.data;
@@ -321,9 +377,9 @@ export class OpenAlexClient {
       }
     }
 
-    const result = await this.retryWithBackoff(async () => {
+    const result = await this.retryWithBackoff(async (auth) => {
       debug('searchEntities', entityType, JSON.stringify(params));
-      const response = await this.client.get(`/${entityType}`, { params });
+      const response = await this.client.get(`/${entityType}`, { params: { ...params, ...auth } });
       return response.data;
     }, `searchEntities(${entityType})`);
 
@@ -347,10 +403,8 @@ export class OpenAlexClient {
       }
     }
 
-    const result = await this.retryWithBackoff(async () => {
-      const params: Record<string, string> = { q: query };
-      if (this.email && !this.apiKey) params.mailto = this.email;
-      if (this.apiKey) params.api_key = this.apiKey;
+    const result = await this.retryWithBackoff(async (auth) => {
+      const params: Record<string, string> = { q: query, ...auth };
 
       const response = await this.client.get(`/autocomplete/${entityType}`, { params });
       return response.data;
