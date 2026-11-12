@@ -73,16 +73,34 @@ describe('author tool handlers', () => {
     expect(client.getAuthor).toHaveBeenCalledWith('A1234567890');
   });
 
-  it.each([...ORCID_FORMS, ...OPENALEX_FORMS])('get_author_works sends the resolved ID for %s', async (id) => {
+  it.each(ORCID_FORMS)('get_author_works resolves %s through one lookup', async (id) => {
     const client = mockClient();
     await getAuthorWorks(client, { author_id: id, from_year: 2020 }, 10);
+    expect(client.getAuthor).toHaveBeenCalledTimes(1);
     expect(worksAuthorIds(client)).toEqual(['A1234567890']);
     expect(client.getWorks.mock.calls[0][0].filter.publication_year).toBe('>2019');
   });
 
-  it.each(ORCID_FORMS)('get_author_collaborators resolves %s and leaves the author out', async (id) => {
+  it.each(OPENALEX_FORMS)('get_author_works sends the normalized ID for %s without a lookup', async (id) => {
+    const client = mockClient();
+    await getAuthorWorks(client, { author_id: id, from_year: 2020 }, 10);
+    expect(client.getAuthor).not.toHaveBeenCalled();
+    expect(worksAuthorIds(client)).toEqual(['A1234567890']);
+    expect(client.getWorks.mock.calls[0][0].filter.publication_year).toBe('>2019');
+  });
+
+  it.each(ORCID_FORMS)('get_author_collaborators resolves %s through one lookup and leaves the author out', async (id) => {
     const client = mockClient();
     const result = await getAuthorCollaborators(client, { author_id: id }, 200);
+    expect(client.getAuthor).toHaveBeenCalledTimes(1);
+    expect(worksAuthorIds(client)).toEqual(['A1234567890']);
+    expect(result.collaborators.map((c) => c.id)).toEqual(['https://openalex.org/A2']);
+  });
+
+  it.each(OPENALEX_FORMS)('get_author_collaborators sends the normalized ID for %s without a lookup', async (id) => {
+    const client = mockClient();
+    const result = await getAuthorCollaborators(client, { author_id: id }, 200);
+    expect(client.getAuthor).not.toHaveBeenCalled();
     expect(worksAuthorIds(client)).toEqual(['A1234567890']);
     expect(result.collaborators.map((c) => c.id)).toEqual(['https://openalex.org/A2']);
   });
