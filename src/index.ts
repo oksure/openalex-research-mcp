@@ -33,7 +33,7 @@ if (process.argv[2] === 'setup') {
 
 debug('Server starting...');
 debug('Email:', process.env.OPENALEX_EMAIL);
-debug('API Key:', process.env.OPENALEX_API_KEY ? 'Set' : 'Not set');
+debug('API Key:', process.env.OPENALEX_API_KEY || process.env.OPENALEX_API_KEYS || process.env.OPENALEX_API_KEYS_FILE ? 'Set' : 'Not set');
 
 // Initialize OpenAlex client
 const openAlexClient = new OpenAlexClient();
@@ -1918,7 +1918,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   baseUrl: CONFIG.API.BASE_URL,
                   timeout: CONFIG.API.TIMEOUT,
                   emailConfigured: !!process.env.OPENALEX_EMAIL,
-                  apiKeyConfigured: !!process.env.OPENALEX_API_KEY,
+                  apiKeyConfigured: openAlexClient.apiKeyCount > 0,
+                  apiKeyCount: openAlexClient.apiKeyCount,
                 },
                 cache: {
                   enabled: true,

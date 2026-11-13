@@ -198,6 +198,19 @@ For premium users with an API key:
 export OPENALEX_API_KEY="your-api-key"
 ```
 
+With several keys (for example a personal and an institutional one), add the others in either
+or both of these; keys are used in order, `OPENALEX_API_KEY` first:
+
+```bash
+export OPENALEX_API_KEYS="key-2,key-3"                 # commas, semicolons or blanks
+export OPENALEX_API_KEYS_FILE="$HOME/openalex_keys.txt" # one key per line, # starts a comment
+```
+
+A request whose key has spent its daily budget goes out again at once with the next key; the
+spent key is skipped until the next midnight UTC, when OpenAlex refills it. A key OpenAlex refuses
+(HTTP 401) is set aside until the server restarts. An unreadable keys file stops the server at
+startup. `health_check` reports `apiKeyCount`.
+
 ### Claude Desktop Configuration
 
 Add to your Claude Desktop config file:
